@@ -7,6 +7,7 @@ public class EnemySpawner : MonoBehaviour
     [SerializeField] private Transform gameplayTilesRoot;
     [SerializeField] private PlayerController playerController;
     [SerializeField] private Transform enemiesRoot;
+    [SerializeField] private EnemyPromptSpriteSet promptSprites;
     [SerializeField] private bool avoidPlayerTile = true;
     [SerializeField, Range(0.1f, 1f)] private float enemySizeMultiplier = 0.35f;
     [SerializeField] private Color enemyColor = new(0.85f, 0.2f, 0.2f, 1f);
@@ -57,7 +58,7 @@ public class EnemySpawner : MonoBehaviour
         enemyTransform.localScale = new Vector3(size, size, 1f);
 
         EnemyEncounter encounter = enemyObject.AddComponent<EnemyEncounter>();
-        encounter.Initialize(playerController, tile.transform);
+        encounter.Initialize(playerController, tile.transform, promptSprites);
     }
 
     private bool TryResolveReferences()

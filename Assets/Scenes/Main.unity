@@ -1401,6 +1401,11 @@ MonoBehaviour:
   gameplayTilesRoot: {fileID: 966958951}
   playerController: {fileID: 1601537335}
   enemiesRoot: {fileID: 0}
+  promptSprites:
+    up: {fileID: -4823845192360606022, guid: d46ee7eec561d52498e4c1f9f7adef8d, type: 3}
+    down: {fileID: 1624890846711302093, guid: 7bd97f12586e4e644b66b59403fa50a4, type: 3}
+    left: {fileID: 1844653087536995767, guid: 547b8948d511a8a44a3233f6a1cd39bc, type: 3}
+    right: {fileID: -6926889771822751844, guid: 9451884d0f82910428164163030859c0, type: 3}
   avoidPlayerTile: 1
   enemySizeMultiplier: 0.35
   enemyColor: {r: 0.85, g: 0.2, b: 0.2, a: 1}

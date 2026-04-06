@@ -22,24 +22,24 @@ public class EnemyEncounter : MonoBehaviour
     };
 
     [SerializeField] private Vector3 popupOffset = new(0f, 1.1f, 0f);
-    [SerializeField] private Color popupColor = Color.white;
-    [SerializeField] private int popupFontSize = 48;
-    [SerializeField] private float popupCharacterSize = 0.08f;
     [SerializeField] private int popupSortingOrder = 10;
+    [SerializeField] private float defeatDelay = 0.18f;
     [SerializeField] private bool logSequenceEvents = true;
 
     private PlayerController playerController;
     private Transform targetTile;
-    private TextMesh popupText;
-    private Transform popupTransform;
+    private EnemyPromptSpriteSet promptSprites;
+    private EnemySequencePopup popup;
     private int sequenceIndex;
     private bool encounterActive;
     private bool isDefeated;
+    private Sprite[] cachedSequenceSprites;
 
-    public void Initialize(PlayerController controller, Transform tile)
+    public void Initialize(PlayerController controller, Transform tile, EnemyPromptSpriteSet sprites)
     {
         playerController = controller;
         targetTile = tile;
+        promptSprites = sprites;
 
         if (playerController == null || targetTile == null)
         {
@@ -57,8 +57,6 @@ public class EnemyEncounter : MonoBehaviour
         {
             return;
         }
-
-        UpdatePopupPosition();
 
         SequenceInput input = ReadSequenceInput();
         if (input == SequenceInput.None)
@@ -81,9 +79,9 @@ public class EnemyEncounter : MonoBehaviour
             }
         }
 
-        if (popupTransform != null)
+        if (popup != null)
         {
-            Destroy(popupTransform.gameObject);
+            Destroy(popup.gameObject);
         }
     }
 
@@ -104,8 +102,7 @@ public class EnemyEncounter : MonoBehaviour
         playerController.SetControlsLocked(true);
 
         EnsurePopup();
-        UpdatePopupText();
-        UpdatePopupPosition();
+        UpdatePopupDisplay();
         LogSequenceEvent("Enemy encounter started.");
     }
 
@@ -121,13 +118,18 @@ public class EnemyEncounter : MonoBehaviour
                 return;
             }
 
-            UpdatePopupText();
+            UpdatePopupDisplay();
             LogSequenceEvent($"Correct input: {input}");
             return;
         }
 
         sequenceIndex = input == RequiredSequence[0] ? 1 : 0;
-        UpdatePopupText();
+        if (popup != null)
+        {
+            popup.FlashFailure();
+        }
+
+        UpdatePopupDisplay();
         LogSequenceEvent($"Wrong input: {input}. Sequence reset.");
     }
 
@@ -136,107 +138,39 @@ public class EnemyEncounter : MonoBehaviour
         isDefeated = true;
         encounterActive = false;
         playerController.SetControlsLocked(false);
+        UpdatePopupDisplay();
+
+        if (popup != null)
+        {
+            popup.FlashSuccess();
+        }
+
         LogSequenceEvent("Enemy defeated.");
-        Destroy(gameObject);
+        StartCoroutine(DestroyAfterVictory());
     }
 
     private void EnsurePopup()
     {
-        if (popupText != null)
+        if (popup != null)
         {
-            popupText.gameObject.SetActive(true);
             return;
         }
 
         GameObject popupObject = new("EnemySequencePopup");
-        popupTransform = popupObject.transform;
-        popupTransform.SetParent(transform.parent, true);
+        popupObject.transform.SetParent(transform.parent, true);
 
-        popupText = popupObject.AddComponent<TextMesh>();
-        popupText.anchor = TextAnchor.MiddleCenter;
-        popupText.alignment = TextAlignment.Center;
-        popupText.color = popupColor;
-        popupText.fontSize = popupFontSize;
-        popupText.characterSize = popupCharacterSize;
-
-        Font font = GetPopupFont();
-        if (font != null)
-        {
-            popupText.font = font;
-
-            MeshRenderer meshRenderer = popupObject.GetComponent<MeshRenderer>();
-            if (meshRenderer != null)
-            {
-                meshRenderer.sharedMaterial = font.material;
-                meshRenderer.sortingOrder = popupSortingOrder;
-            }
-        }
+        popup = popupObject.AddComponent<EnemySequencePopup>();
+        popup.Initialize(transform, popupOffset, popupSortingOrder);
     }
 
-    private void UpdatePopupPosition()
+    private void UpdatePopupDisplay()
     {
-        if (popupTransform == null)
+        if (popup == null)
         {
             return;
         }
 
-        popupTransform.position = transform.position + popupOffset;
-    }
-
-    private void UpdatePopupText()
-    {
-        if (popupText == null)
-        {
-            return;
-        }
-
-        popupText.text = BuildSequenceDisplay();
-    }
-
-    private string BuildSequenceDisplay()
-    {
-        string display = string.Empty;
-
-        for (int i = 0; i < RequiredSequence.Length; i++)
-        {
-            if (i > 0)
-            {
-                display += " ";
-            }
-
-            string token = GetDisplayToken(RequiredSequence[i]);
-            if (i < sequenceIndex)
-            {
-                display += "(" + token + ")";
-            }
-            else if (i == sequenceIndex)
-            {
-                display += "[" + token + "]";
-            }
-            else
-            {
-                display += token;
-            }
-        }
-
-        return display;
-    }
-
-    private static string GetDisplayToken(SequenceInput input)
-    {
-        switch (input)
-        {
-            case SequenceInput.Up:
-                return "^";
-            case SequenceInput.Down:
-                return "v";
-            case SequenceInput.Left:
-                return "<";
-            case SequenceInput.Right:
-                return ">";
-            default:
-                return "?";
-        }
+        popup.SetSequence(GetSequenceSprites(), sequenceIndex);
     }
 
     private static SequenceInput ReadSequenceInput()
@@ -280,9 +214,47 @@ public class EnemyEncounter : MonoBehaviour
         Debug.Log(message, this);
     }
 
-    private static Font GetPopupFont()
+    private Sprite[] GetSequenceSprites()
     {
+        if (cachedSequenceSprites != null && cachedSequenceSprites.Length == RequiredSequence.Length)
+        {
+            return cachedSequenceSprites;
+        }
 
-        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        cachedSequenceSprites = new Sprite[RequiredSequence.Length];
+        for (int i = 0; i < RequiredSequence.Length; i++)
+        {
+            cachedSequenceSprites[i] = GetPromptSprite(RequiredSequence[i]);
+        }
+
+        return cachedSequenceSprites;
+    }
+
+    private Sprite GetPromptSprite(SequenceInput input)
+    {
+        switch (input)
+        {
+            case SequenceInput.Up:
+                return promptSprites.Up;
+            case SequenceInput.Down:
+                return promptSprites.Down;
+            case SequenceInput.Left:
+                return promptSprites.Left;
+            case SequenceInput.Right:
+                return promptSprites.Right;
+            default:
+                return null;
+        }
+    }
+
+    private System.Collections.IEnumerator DestroyAfterVictory()
+    {
+        float delay = Mathf.Max(0f, defeatDelay);
+        if (delay > 0f)
+        {
+            yield return new WaitForSeconds(delay);
+        }
+
+        Destroy(gameObject);
     }
 }
