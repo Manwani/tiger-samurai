@@ -181,22 +181,22 @@ public class EnemyEncounter : MonoBehaviour
             return SequenceInput.None;
         }
 
-        if (keyboard.upArrowKey.wasPressedThisFrame || keyboard.wKey.wasPressedThisFrame)
+        if (keyboard.upArrowKey.wasPressedThisFrame)
         {
             return SequenceInput.Up;
         }
 
-        if (keyboard.downArrowKey.wasPressedThisFrame || keyboard.sKey.wasPressedThisFrame)
+        if (keyboard.downArrowKey.wasPressedThisFrame)
         {
             return SequenceInput.Down;
         }
 
-        if (keyboard.leftArrowKey.wasPressedThisFrame || keyboard.aKey.wasPressedThisFrame)
+        if (keyboard.leftArrowKey.wasPressedThisFrame)
         {
             return SequenceInput.Left;
         }
 
-        if (keyboard.rightArrowKey.wasPressedThisFrame || keyboard.dKey.wasPressedThisFrame)
+        if (keyboard.rightArrowKey.wasPressedThisFrame)
         {
             return SequenceInput.Right;
         }

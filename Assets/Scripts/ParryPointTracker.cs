@@ -6,8 +6,14 @@ using UnityEngine.InputSystem;
 public class ParryPointTracker : MonoBehaviour
 {
     [SerializeField] private PlayerController playerController;
+    [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioClip parrySuccessClip;
+    [SerializeField] private GameObject parrySuccessEffectPrefab;
+    [SerializeField] private ParryScreenFeedback parryScreenFeedback;
     [SerializeField, Range(0f, 1f)] private float parryWindowMinNormalizedSize = 0.35f;
     [SerializeField, Range(0f, 1f)] private float parryWindowMaxNormalizedSize = 0.55f;
+    [SerializeField, Min(0.01f)] private float parryPitchMin = 0.9f;
+    [SerializeField, Min(0.01f)] private float parryPitchMax = 1.1f;
     [SerializeField] private bool logParryAttempts = true;
     [SerializeField] private int parryPoints;
 
@@ -33,7 +39,11 @@ public class ParryPointTracker : MonoBehaviour
             return;
         }
 
+        EnsureAudioSource();
+        PreloadParrySound();
+        ResolveParryScreenFeedback();
         NormalizeParryWindow();
+        NormalizePitchRange();
     }
 
     private void Update()
@@ -69,7 +79,9 @@ public class ParryPointTracker : MonoBehaviour
 
     private void OnValidate()
     {
+        EnsureAudioSource();
         NormalizeParryWindow();
+        NormalizePitchRange();
     }
 
     private void TryParryCurrentTile()
@@ -94,8 +106,13 @@ public class ParryPointTracker : MonoBehaviour
             return;
         }
 
+        Vector3 parryEffectPosition = bestCircle.transform.position;
+
         parryPoints++;
         bestCircle.Consume();
+        PlayParrySuccessSound();
+        SpawnParrySuccessEffect(parryEffectPosition);
+        PlayParrySuccessScreenFeedback();
         LogParryEvent($"Parry! Points: {parryPoints}");
     }
 
@@ -141,6 +158,101 @@ public class ParryPointTracker : MonoBehaviour
         if (parryWindowMaxNormalizedSize < parryWindowMinNormalizedSize)
         {
             parryWindowMaxNormalizedSize = parryWindowMinNormalizedSize;
+        }
+    }
+
+    private void NormalizePitchRange()
+    {
+        if (parryPitchMax < parryPitchMin)
+        {
+            parryPitchMax = parryPitchMin;
+        }
+    }
+
+    private void EnsureAudioSource()
+    {
+        if (audioSource == null)
+        {
+            audioSource = GetComponent<AudioSource>();
+        }
+
+        if (audioSource == null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        audioSource.playOnAwake = false;
+        audioSource.loop = false;
+        audioSource.spatialBlend = 0f;
+        audioSource.pitch = 1f;
+    }
+
+    private void PlayParrySuccessSound()
+    {
+        if (audioSource == null || parrySuccessClip == null)
+        {
+            return;
+        }
+
+        NormalizePitchRange();
+        audioSource.pitch = Random.Range(parryPitchMin, parryPitchMax);
+        audioSource.PlayOneShot(parrySuccessClip);
+    }
+
+    private void SpawnParrySuccessEffect(Vector3 position)
+    {
+        if (parrySuccessEffectPrefab == null)
+        {
+            return;
+        }
+
+        Instantiate(parrySuccessEffectPrefab, position, parrySuccessEffectPrefab.transform.rotation);
+    }
+
+    private void PlayParrySuccessScreenFeedback()
+    {
+        ResolveParryScreenFeedback();
+        parryScreenFeedback?.PlayParryFeedback();
+    }
+
+    private void PreloadParrySound()
+    {
+        if (parrySuccessClip == null)
+        {
+            return;
+        }
+
+        parrySuccessClip.LoadAudioData();
+    }
+
+    private void ResolveParryScreenFeedback()
+    {
+        if (parryScreenFeedback != null)
+        {
+            return;
+        }
+
+        parryScreenFeedback = FindFirstObjectByType<ParryScreenFeedback>();
+        if (parryScreenFeedback != null)
+        {
+            return;
+        }
+
+        Camera targetCamera = Camera.main;
+        if (targetCamera == null)
+        {
+            targetCamera = FindFirstObjectByType<Camera>();
+        }
+
+        if (targetCamera == null)
+        {
+            return;
+        }
+
+        parryScreenFeedback = targetCamera.GetComponent<ParryScreenFeedback>();
+        if (parryScreenFeedback == null)
+        {
+            parryScreenFeedback = targetCamera.gameObject.AddComponent<ParryScreenFeedback>();
         }
     }
 
