@@ -8,6 +8,7 @@ public class EnemySpawner : MonoBehaviour
     [SerializeField] private PlayerController playerController;
     [SerializeField] private Transform enemiesRoot;
     [SerializeField] private EnemyPromptSpriteSet promptSprites;
+    [SerializeField] private bool spawnEnemyOnStart = false;
     [SerializeField] private bool avoidPlayerTile = true;
     [SerializeField, Range(0.1f, 1f)] private float enemySizeMultiplier = 0.35f;
     [SerializeField] private Color enemyColor = new(0.85f, 0.2f, 0.2f, 1f);
@@ -22,6 +23,11 @@ public class EnemySpawner : MonoBehaviour
         if (!TryResolveReferences())
         {
             enabled = false;
+            return;
+        }
+
+        if (!spawnEnemyOnStart)
+        {
             return;
         }
 

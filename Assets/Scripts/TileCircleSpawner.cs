@@ -5,23 +5,49 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class TileCircleSpawner : MonoBehaviour
 {
+    private enum SpawnMode
+    {
+        RandomTile,
+        StartingPlayerTile
+    }
+
+    private enum DebugSpawnFilter
+    {
+        All,
+        WhiteOnly,
+        RedOnly,
+        BlueOnly,
+        BlackOnly
+    }
+
     [SerializeField] private Transform gameplayTilesRoot;
     [SerializeField] private Transform effectsRoot;
     [SerializeField] private Transform playerTransform;
+    [SerializeField] private PlayerController playerController;
     [SerializeField] private ParryPointTracker parryPointTracker;
+    [SerializeField] private SpawnMode spawnMode = SpawnMode.RandomTile;
+    [SerializeField] private bool avoidPlayerTile = true;
     [SerializeField] private float spawnInterval = 1f;
-    [SerializeField] private float shrinkDuration = 1.25f;
     [SerializeField] private float lineWidth = 0.08f;
     [SerializeField, Min(0f)] private float circlePaddingPixels = 500f;
     [SerializeField, Range(0.1f, 1.5f)] private float circleSizeMultiplier = 1f;
     [SerializeField, Range(0.1f, 1f)] private float ellipseHeightScale = 0.426f;
     [SerializeField, Range(8, 64)] private int circleSegments = 64;
     [SerializeField] private int sortingOrder = 0;
-    [SerializeField] private Color circleColor = new(1f, 0.95f, 0.35f, 0.9f);
+    [SerializeField, Range(0f, 1f)] private float redCircleChance = 0.6f;
+    [SerializeField, Range(0f, 1f)] private float blueCircleChance = 0.2f;
+    [SerializeField, Range(0f, 1f)] private float blackCircleChance = 0.1f;
+    [SerializeField] private DebugSpawnFilter debugSpawnFilter = DebugSpawnFilter.All;
+    [SerializeField] private ParryCircleEncounter.Settings whiteCircleSettings = ParryCircleEncounter.Settings.CreateWhiteDefaults();
+    [SerializeField] private ParryCircleEncounter.Settings redCircleSettings = ParryCircleEncounter.Settings.CreateRedDefaults();
+    [SerializeField] private ParryCircleEncounter.Settings blueCircleSettings = ParryCircleEncounter.Settings.CreateBlueDefaults();
+    [SerializeField] private ParryCircleEncounter.Settings blackCircleSettings = ParryCircleEncounter.Settings.CreateBlackDefaults();
 
     private readonly List<SpriteRenderer> tileRenderers = new();
+    private readonly List<SpriteRenderer> candidateTiles = new();
     private Material runtimeLineMaterial;
     private SpriteRenderer startingPlayerTile;
+    private ParryCircleEncounter activeEncounter;
 
     private void Start()
     {
@@ -35,13 +61,15 @@ public class TileCircleSpawner : MonoBehaviour
             effectsRoot = CreateEffectsRoot();
         }
 
+        NormalizeEncounterSettings();
+
         if (!TryCollectTiles())
         {
             enabled = false;
             return;
         }
 
-        if (!TryFindPlayer())
+        if (!TryFindPlayerController())
         {
             enabled = false;
             return;
@@ -64,6 +92,11 @@ public class TileCircleSpawner : MonoBehaviour
         StartCoroutine(SpawnLoop());
     }
 
+    private void OnValidate()
+    {
+        NormalizeEncounterSettings();
+    }
+
     private void OnDestroy()
     {
         if (runtimeLineMaterial != null)
@@ -78,21 +111,36 @@ public class TileCircleSpawner : MonoBehaviour
 
         while (enabled)
         {
-            SpawnCircleAtStartingPlayerTile();
+            if (activeEncounter != null)
+            {
+                yield return null;
+                continue;
+            }
+
+            if (!SpawnCircle())
+            {
+                yield return null;
+                continue;
+            }
+
+            while (activeEncounter != null)
+            {
+                yield return null;
+            }
+
             yield return new WaitForSeconds(Mathf.Max(0.05f, spawnInterval));
         }
     }
 
-    private void SpawnCircleAtStartingPlayerTile()
+    private bool SpawnCircle()
     {
-        // Debug mode: keep spawning on the starting player tile instead of a random tile.
-        // SpriteRenderer tile = tileRenderers[Random.Range(0, tileRenderers.Count)];
-        SpriteRenderer tile = GetStartingPlayerTile();
+        SpriteRenderer tile = GetSpawnTile();
         if (tile == null)
         {
-            return;
+            return false;
         }
 
+        ParryCircleEncounter.Settings encounterSettings = ChooseEncounterSettings();
         Bounds tileBounds = tile.bounds;
         float radius = (Mathf.Min(tileBounds.size.x, tileBounds.size.y) * 0.5f * circleSizeMultiplier) +
                        GetPaddingInWorldUnits(tile, circlePaddingPixels);
@@ -103,11 +151,173 @@ public class TileCircleSpawner : MonoBehaviour
         circleTransform.position = tileBounds.center;
 
         LineRenderer lineRenderer = circleObject.AddComponent<LineRenderer>();
-        ConfigureLineRenderer(lineRenderer);
+        ConfigureLineRenderer(lineRenderer, encounterSettings.CircleColor);
         DrawUnitEllipse(lineRenderer);
 
-        ShrinkingCircle shrinkingCircle = circleObject.AddComponent<ShrinkingCircle>();
-        shrinkingCircle.Initialize(lineRenderer, radius, shrinkDuration, circleColor, tile.transform, parryPointTracker);
+        ParryCircleEncounter encounter = circleObject.AddComponent<ParryCircleEncounter>();
+        encounter.Initialize(lineRenderer, radius, tile.transform, playerController, parryPointTracker, encounterSettings);
+        activeEncounter = encounter;
+        return true;
+    }
+
+    private bool UsesStartingPlayerTile()
+    {
+        return spawnMode == SpawnMode.StartingPlayerTile;
+    }
+
+    private ParryCircleEncounter.Settings ChooseEncounterSettings()
+    {
+        if (redCircleSettings == null)
+        {
+            redCircleSettings = ParryCircleEncounter.Settings.CreateRedDefaults();
+        }
+
+        if (blueCircleSettings == null)
+        {
+            blueCircleSettings = ParryCircleEncounter.Settings.CreateBlueDefaults();
+        }
+
+        if (blackCircleSettings == null)
+        {
+            blackCircleSettings = ParryCircleEncounter.Settings.CreateBlackDefaults();
+        }
+
+        if (whiteCircleSettings == null)
+        {
+            whiteCircleSettings = ParryCircleEncounter.Settings.CreateWhiteDefaults();
+        }
+
+        switch (debugSpawnFilter)
+        {
+            case DebugSpawnFilter.WhiteOnly:
+                return whiteCircleSettings;
+            case DebugSpawnFilter.RedOnly:
+                return redCircleSettings;
+            case DebugSpawnFilter.BlueOnly:
+                return blueCircleSettings;
+            case DebugSpawnFilter.BlackOnly:
+                return blackCircleSettings;
+        }
+
+        float redChance = Mathf.Clamp01(redCircleChance);
+        float blueChance = Mathf.Clamp01(blueCircleChance);
+        float blackChance = Mathf.Clamp01(blackCircleChance);
+        float totalSpecialChance = redChance + blueChance + blackChance;
+
+        if (totalSpecialChance > 1f)
+        {
+            float normalizationFactor = 1f / totalSpecialChance;
+            redChance *= normalizationFactor;
+            blueChance *= normalizationFactor;
+            blackChance *= normalizationFactor;
+        }
+
+        float roll = Random.value;
+        if (roll < blackChance)
+        {
+            return blackCircleSettings;
+        }
+
+        roll -= blackChance;
+        if (roll < blueChance)
+        {
+            return blueCircleSettings;
+        }
+
+        roll -= blueChance;
+        if (roll < redChance)
+        {
+            return redCircleSettings;
+        }
+
+        return whiteCircleSettings;
+    }
+
+    private SpriteRenderer GetSpawnTile()
+    {
+        if (UsesStartingPlayerTile())
+        {
+            SpriteRenderer startingTile = GetStartingPlayerTile();
+            if (startingTile == null)
+            {
+                return null;
+            }
+
+            if (parryPointTracker != null && parryPointTracker.HasActiveEncounterOnTile(startingTile.transform))
+            {
+                return null;
+            }
+
+            if (HasEnemyOnTile(startingTile.transform))
+            {
+                return null;
+            }
+
+            return startingTile;
+        }
+
+        return GetRandomTile();
+    }
+
+    private SpriteRenderer GetRandomTile()
+    {
+        candidateTiles.Clear();
+
+        Transform playerTile = avoidPlayerTile && playerController != null
+            ? playerController.CurrentTileTransform
+            : null;
+
+        foreach (SpriteRenderer tileRenderer in tileRenderers)
+        {
+            if (tileRenderer == null)
+            {
+                continue;
+            }
+
+            if (tileRenderer.transform == playerTile)
+            {
+                continue;
+            }
+
+            if (parryPointTracker != null && parryPointTracker.HasActiveEncounterOnTile(tileRenderer.transform))
+            {
+                continue;
+            }
+
+            if (HasEnemyOnTile(tileRenderer.transform))
+            {
+                continue;
+            }
+
+            candidateTiles.Add(tileRenderer);
+        }
+
+        if (candidateTiles.Count == 0)
+        {
+            return null;
+        }
+
+        int randomIndex = Random.Range(0, candidateTiles.Count);
+        return candidateTiles[randomIndex];
+    }
+
+    private static bool HasEnemyOnTile(Transform tileTransform)
+    {
+        if (tileTransform == null)
+        {
+            return false;
+        }
+
+        EnemyEncounter[] enemyEncounters = FindObjectsByType<EnemyEncounter>(FindObjectsSortMode.None);
+        foreach (EnemyEncounter enemyEncounter in enemyEncounters)
+        {
+            if (enemyEncounter != null && enemyEncounter.IsOnTile(tileTransform))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static float GetPaddingInWorldUnits(SpriteRenderer tile, float paddingPixels)
@@ -124,26 +334,26 @@ public class TileCircleSpawner : MonoBehaviour
         return (paddingPixels / tile.sprite.pixelsPerUnit) * smallestScale;
     }
 
-    private bool TryFindPlayer()
+    private bool TryFindPlayerController()
     {
-        if (playerTransform != null)
+        if (playerController == null && playerTransform != null)
         {
+            playerController = playerTransform.GetComponent<PlayerController>();
+        }
+
+        if (playerController == null)
+        {
+            playerController = FindFirstObjectByType<PlayerController>();
+        }
+
+        if (playerController != null)
+        {
+            playerTransform = playerController.transform;
             return true;
         }
 
-        GameObject player = GameObject.Find("Player");
-        if (player != null)
-        {
-            playerTransform = player.transform;
-        }
-
-        if (playerTransform == null)
-        {
-            Debug.LogError("TileCircleSpawner needs a Player reference for debug spawning.", this);
-            return false;
-        }
-
-        return true;
+        Debug.LogError("TileCircleSpawner needs a PlayerController reference.", this);
+        return false;
     }
 
     private bool TryFindParryPointTracker()
@@ -173,6 +383,11 @@ public class TileCircleSpawner : MonoBehaviour
         if (startingPlayerTile != null)
         {
             return startingPlayerTile;
+        }
+
+        if (playerTransform == null)
+        {
+            return null;
         }
 
         Vector3 playerPosition = playerTransform.position;
@@ -253,7 +468,7 @@ public class TileCircleSpawner : MonoBehaviour
         return material;
     }
 
-    private void ConfigureLineRenderer(LineRenderer lineRenderer)
+    private void ConfigureLineRenderer(LineRenderer lineRenderer, Color encounterColor)
     {
         lineRenderer.useWorldSpace = false;
         lineRenderer.loop = true;
@@ -263,15 +478,15 @@ public class TileCircleSpawner : MonoBehaviour
         lineRenderer.numCornerVertices = 4;
         lineRenderer.sharedMaterial = runtimeLineMaterial;
         lineRenderer.sortingOrder = sortingOrder;
-        lineRenderer.startColor = circleColor;
-        lineRenderer.endColor = circleColor;
+        lineRenderer.startColor = encounterColor;
+        lineRenderer.endColor = encounterColor;
     }
 
     private void DrawUnitEllipse(LineRenderer lineRenderer)
     {
         int segmentCount = lineRenderer.positionCount;
 
-        // The shrinking script scales this unit ellipse up to the tile size.
+        // The encounter script scales this unit ellipse up to the tile size.
         for (int i = 0; i < segmentCount; i++)
         {
             float angle = (i / (float)segmentCount) * Mathf.PI * 2f;
@@ -279,5 +494,33 @@ public class TileCircleSpawner : MonoBehaviour
 
             lineRenderer.SetPosition(i, point);
         }
+    }
+
+    private void NormalizeEncounterSettings()
+    {
+        if (whiteCircleSettings == null)
+        {
+            whiteCircleSettings = ParryCircleEncounter.Settings.CreateWhiteDefaults();
+        }
+
+        if (redCircleSettings == null)
+        {
+            redCircleSettings = ParryCircleEncounter.Settings.CreateRedDefaults();
+        }
+
+        if (blueCircleSettings == null)
+        {
+            blueCircleSettings = ParryCircleEncounter.Settings.CreateBlueDefaults();
+        }
+
+        if (blackCircleSettings == null)
+        {
+            blackCircleSettings = ParryCircleEncounter.Settings.CreateBlackDefaults();
+        }
+
+        whiteCircleSettings.Normalize();
+        redCircleSettings.Normalize();
+        blueCircleSettings.Normalize();
+        blackCircleSettings.Normalize();
     }
 }

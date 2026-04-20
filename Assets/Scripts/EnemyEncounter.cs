@@ -35,6 +35,8 @@ public class EnemyEncounter : MonoBehaviour
     private bool isDefeated;
     private Sprite[] cachedSequenceSprites;
 
+    public Transform TargetTile => targetTile;
+
     public void Initialize(PlayerController controller, Transform tile, EnemyPromptSpriteSet sprites)
     {
         playerController = controller;
@@ -49,6 +51,11 @@ public class EnemyEncounter : MonoBehaviour
         }
 
         playerController.LandedOnTile += HandlePlayerLanded;
+    }
+
+    public bool IsOnTile(Transform tile)
+    {
+        return targetTile == tile;
     }
 
     private void Update()

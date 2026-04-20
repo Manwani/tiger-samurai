@@ -7,7 +7,6 @@ public class ShrinkingCircle : MonoBehaviour
     private float duration;
     private float elapsed;
     private Color baseColor;
-    private ParryPointTracker parryPointTracker;
     private bool hasBeenConsumed;
 
     public Transform TargetTile { get; private set; }
@@ -18,20 +17,16 @@ public class ShrinkingCircle : MonoBehaviour
         float radius,
         float lifetime,
         Color color,
-        Transform targetTile,
-        ParryPointTracker pointTracker)
+        Transform targetTile)
     {
         lineRenderer = targetLineRenderer;
         startRadius = Mathf.Max(0.001f, radius);
         duration = Mathf.Max(0.01f, lifetime);
         baseColor = color;
         TargetTile = targetTile;
-        parryPointTracker = pointTracker;
 
         transform.localScale = Vector3.one * startRadius;
         ApplyColor(baseColor);
-
-        parryPointTracker?.RegisterCircle(this);
     }
 
     private void Update()
@@ -55,11 +50,6 @@ public class ShrinkingCircle : MonoBehaviour
         {
             Destroy(gameObject);
         }
-    }
-
-    private void OnDestroy()
-    {
-        parryPointTracker?.UnregisterCircle(this);
     }
 
     public void Consume()

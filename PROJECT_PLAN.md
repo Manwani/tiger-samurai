@@ -2,8 +2,8 @@
 
 **Project Name:** TigerSamurai  
 **Active Branch:** `main`  
-**Last Updated:** `2026-04-17`  
-**Current Focus:** Establish a persistent shared tracker while continuing combat feel polish around parries, circles, and enemy encounters.  
+**Last Updated:** `2026-04-18`
+**Current Focus:** First-pass parry encounter progression with a broader white/red/blue/black difficulty ladder, one-at-a-time idle pacing, clearer parry timing feedback, stricter anti-spam parry rules, and enemy spawning temporarily paused for circle testing.
 **Status:** Active prototype development
 
 ## Ongoing Instructions For Assistant
@@ -33,12 +33,15 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 
 ## Outstanding Tasks
 ### Current Priority
-- [ ] Decide the next gameplay feature or polish target after the current parry feedback pass.
-- [ ] Bring `TileCircleSpawner` out of debug mode so circles spawn in the intended gameplay flow instead of always using the starting player tile.
-- [ ] Play-test the combined parry sound, particle, shake, and flash feedback and tune values if any part feels too strong or distracting.
+- [ ] Play-test the first-pass white/red parry encounter flow and tune whether red circles feel fair.
+- [x] Bring `TileCircleSpawner` out of debug mode so circles spawn in the intended gameplay flow instead of always using the starting player tile.
+- [ ] Play-test the combined parry sound, particle, shake, flash, and movement lock feedback together and tune anything that feels too strong or distracting.
 
 ### Near-Term Cleanup
 - [ ] Confirm whether the test `ParryBurst` scene object should stay in `Main.unity` or be removed now that the prefab is spawned by code.
+- [ ] Decide how to show remaining parries on multi-hit circles so red encounters read clearly at a glance.
+- [ ] Replace the temporary `P` prompt above the player with final parry-ready art or UI.
+- [ ] Re-enable enemy spawning after the current circle-feel test pass is done.
 - [ ] Keep this file updated at the end of meaningful work sessions.
 - [ ] Re-check the enemy encounter flow after current combat polish and decide the next improvement.
 
@@ -54,3 +57,9 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - **Key Decisions:** Keep parry pitch variation subtle (`0.9` to `1.1`); use the user-authored `ParryBurst` prefab for the parry VFX; use a simple camera-based shake plus white flash for screen feedback.
 - **What Changed:** Randomized the parry success sound pitch, hooked the `ParryBurst` prefab to successful parries, and added `ParryScreenFeedback` on the main camera to drive shake and flash.
 - **Next Likely Step:** Play-test the full parry feedback package, then decide whether to continue combat polish or return the circle spawner from debug mode.
+
+### 2026-04-18 - First Pass Multi-Stage Parry Encounters
+- **Goal:** Turn circle parries into clearer challenge types with room for difficulty scaling.
+- **Key Decisions:** Add a dedicated `ParryCircleEncounter` class instead of overloading `ShrinkingCircle`; make white circles the simple one-parry baseline; make red circles require three parries, tighten their timing each stage, and lock the player in place once engaged; keep only one active circle on the board at a time; make circles wait at full size until the player actually lands on their tile.
+- **What Changed:** Reworked `TileCircleSpawner` to pick white, red, blue, or black encounter settings, avoid spawning on the player tile, enemy tiles, or an already-occupied tile, default back to random gameplay spawning, keep red as the most common special case for testing, and wait for the current encounter to finish before spawning another; updated `ParryPointTracker` to track encounter objects, create a temporary `P` prompt above the player during the valid parry window, and treat missed parry presses as a fast-fail instead of allowing spam retries; changed player movement locking to use a small lock count so enemy and parry locks can safely overlap; temporarily disabled enemy auto-spawning in `EnemySpawner` to keep the current test loop focused on circle feel.
+- **Next Likely Step:** Test whether the one-at-a-time idle spawn pacing feels readable, then decide whether the next polish pass should be a remaining-parries visual, a fail-state effect, or further tuning on spawn pacing.

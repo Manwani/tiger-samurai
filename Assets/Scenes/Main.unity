@@ -360,11 +360,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f9f0db5eab0a49f2a479ad7d054cf4da, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  shakeDuration: 0.05
+  shakeDuration: 0.1
   shakeStrength: 0.1
-  flashDuration: 0
+  flashDuration: 0.015
   flashAlpha: 0.18
-  flashColor: {r: 0.9764151, g: 0.9511805, b: 0.46978465, a: 1}
+  flashColor: {r: 0.9764151, g: 0.9511805, b: 0.90588236, a: 1}
   flashSortingOrder: 500
 --- !u!1 &619394800
 GameObject:
@@ -506,16 +506,66 @@ MonoBehaviour:
   gameplayTilesRoot: {fileID: 966958951}
   effectsRoot: {fileID: 0}
   playerTransform: {fileID: 1601537334}
+  playerController: {fileID: 0}
   parryPointTracker: {fileID: 1900009126}
+  spawnMode: 0
+  avoidPlayerTile: 1
   spawnInterval: 1
-  shrinkDuration: 1.25
   lineWidth: 0.08
   circlePaddingPixels: 500
   circleSizeMultiplier: 1.5
   ellipseHeightScale: 0.426
   circleSegments: 64
   sortingOrder: 0
-  circleColor: {r: 1, g: 0.95, b: 0.35, a: 0.9}
+  redCircleChance: 0.35
+  blueCircleChance: 0.2
+  blackCircleChance: 0.1
+  debugSpawnFilter: 0
+  whiteCircleSettings:
+    label: White
+    circleColor: {r: 1, g: 1, b: 1, a: 0.9}
+    requiredParries: 1
+    shrinkDuration: 1.25
+    parryWindowMinNormalizedSize: 0.25
+    parryWindowMaxNormalizedSize: 0.55
+    parryWindowDurationSeconds: 0.3
+    stageSpeedMultiplier: 1
+    windowTightenPerStage: 0
+    missedParryShrinkMultiplier: 4
+    lockPlayerOnTile: 0
+  redCircleSettings:
+    label: Red
+    circleColor: {r: 1, g: 0.26, b: 0.26, a: 0.95}
+    requiredParries: 3
+    shrinkDuration: 0.9
+    parryWindowMinNormalizedSize: 0.308
+    parryWindowMaxNormalizedSize: 0.51
+    stageSpeedMultiplier: 0.82
+    windowTightenPerStage: 0.03
+    missedParryShrinkMultiplier: 5
+    lockPlayerOnTile: 1
+  blueCircleSettings:
+    label: Blue
+    circleColor: {r: 0.28, g: 0.62, b: 1, a: 0.95}
+    requiredParries: 5
+    shrinkDuration: 0.82
+    parryWindowMinNormalizedSize: 0.4
+    parryWindowMaxNormalizedSize: 0.53
+    stageSpeedMultiplier: 0.93
+    windowTightenPerStage: 0.01
+    missedParryShrinkMultiplier: 6
+    lockPlayerOnTile: 1
+  blackCircleSettings:
+    label: Black
+    circleColor: {r: 0.1, g: 0.1, b: 0.12, a: 0.98}
+    requiredParries: 7
+    shrinkDuration: 0.72
+    parryWindowMinNormalizedSize: 0.42
+    parryWindowMaxNormalizedSize: 0.52
+    stageSpeedMultiplier: 0.94
+    windowTightenPerStage: 0.008
+    missedParryShrinkMultiplier: 7
+    lockPlayerOnTile: 1
 --- !u!1 &1036473096
 GameObject:
   m_ObjectHideFlags: 0
@@ -1461,8 +1511,10 @@ MonoBehaviour:
   parrySuccessClip: {fileID: 8300000, guid: 4a3a3325bb866814dace71f0e8d9599f, type: 3}
   parrySuccessEffectPrefab: {fileID: 817835827773208551, guid: 0400392bbb705d84f813b3327bc0693d, type: 3}
   parryScreenFeedback: {fileID: 0}
-  parryWindowMinNormalizedSize: 0.35
-  parryWindowMaxNormalizedSize: 0.55
+  parryPromptOffset: {x: 0, y: 0.95, z: 0}
+  parryPromptColor: {r: 0, g: 1, b: 0, a: 1}
+  parryPromptCharacterSize: 1
+  parryPromptFontSize: 64
   parryPitchMin: 0.9
   parryPitchMax: 1.1
   logParryAttempts: 1
@@ -1487,6 +1539,7 @@ MonoBehaviour:
     down: {fileID: 1624890846711302093, guid: 7bd97f12586e4e644b66b59403fa50a4, type: 3}
     left: {fileID: 1844653087536995767, guid: 547b8948d511a8a44a3233f6a1cd39bc, type: 3}
     right: {fileID: -6926889771822751844, guid: 9451884d0f82910428164163030859c0, type: 3}
+  spawnEnemyOnStart: 0
   avoidPlayerTile: 1
   enemySizeMultiplier: 0.35
   enemyColor: {r: 0.85, g: 0.2, b: 0.2, a: 1}

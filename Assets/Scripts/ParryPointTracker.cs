@@ -10,14 +10,17 @@ public class ParryPointTracker : MonoBehaviour
     [SerializeField] private AudioClip parrySuccessClip;
     [SerializeField] private GameObject parrySuccessEffectPrefab;
     [SerializeField] private ParryScreenFeedback parryScreenFeedback;
-    [SerializeField, Range(0f, 1f)] private float parryWindowMinNormalizedSize = 0.35f;
-    [SerializeField, Range(0f, 1f)] private float parryWindowMaxNormalizedSize = 0.55f;
+    [SerializeField] private Vector3 parryPromptOffset = new(0f, 0.95f, 0f);
+    [SerializeField] private Color parryPromptColor = Color.white;
+    [SerializeField, Min(0.01f)] private float parryPromptCharacterSize = 0.18f;
+    [SerializeField] private int parryPromptFontSize = 64;
     [SerializeField, Min(0.01f)] private float parryPitchMin = 0.9f;
     [SerializeField, Min(0.01f)] private float parryPitchMax = 1.1f;
     [SerializeField] private bool logParryAttempts = true;
     [SerializeField] private int parryPoints;
 
-    private readonly List<ShrinkingCircle> activeCircles = new();
+    private readonly List<ParryCircleEncounter> activeCircles = new();
+    private TextMesh parryPromptText;
 
     public int ParryPoints => parryPoints;
 
@@ -42,12 +45,14 @@ public class ParryPointTracker : MonoBehaviour
         EnsureAudioSource();
         PreloadParrySound();
         ResolveParryScreenFeedback();
-        NormalizeParryWindow();
+        EnsureParryPrompt();
         NormalizePitchRange();
     }
 
     private void Update()
     {
+        UpdateParryPrompt();
+
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null || !keyboard.spaceKey.wasPressedThisFrame)
         {
@@ -57,7 +62,7 @@ public class ParryPointTracker : MonoBehaviour
         TryParryCurrentTile();
     }
 
-    public void RegisterCircle(ShrinkingCircle circle)
+    public void RegisterCircle(ParryCircleEncounter circle)
     {
         if (circle == null || activeCircles.Contains(circle))
         {
@@ -67,7 +72,7 @@ public class ParryPointTracker : MonoBehaviour
         activeCircles.Add(circle);
     }
 
-    public void UnregisterCircle(ShrinkingCircle circle)
+    public void UnregisterCircle(ParryCircleEncounter circle)
     {
         if (circle == null)
         {
@@ -80,8 +85,12 @@ public class ParryPointTracker : MonoBehaviour
     private void OnValidate()
     {
         EnsureAudioSource();
-        NormalizeParryWindow();
         NormalizePitchRange();
+    }
+
+    private void OnDisable()
+    {
+        SetParryPromptVisible(false);
     }
 
     private void TryParryCurrentTile()
@@ -93,50 +102,114 @@ public class ParryPointTracker : MonoBehaviour
             return;
         }
 
-        ShrinkingCircle bestCircle = FindBestCircleOnTile(playerTile);
+        ParryCircleEncounter bestCircle = FindBestCircleOnTile(playerTile);
         if (bestCircle == null)
         {
             LogParryEvent("Parry miss. There is no active circle on the player's tile.");
             return;
         }
 
-        if (!IsInsideParryWindow(bestCircle.NormalizedSize))
+        if (!bestCircle.CanAttemptCurrentStage)
         {
-            LogParryEvent($"Parry miss. Circle size {bestCircle.NormalizedSize:F2} is outside the parry window.");
+            return;
+        }
+
+        if (!bestCircle.IsInsideCurrentParryWindow())
+        {
+            if (bestCircle.HandleMissedParryAttempt())
+            {
+                LogParryEvent($"Parry miss. Circle size {bestCircle.NormalizedSize:F2} is outside the parry window, so it sped up.");
+            }
+
             return;
         }
 
         Vector3 parryEffectPosition = bestCircle.transform.position;
+        bool completedEncounter;
+
+        if (!bestCircle.TryResolveParry(out completedEncounter))
+        {
+            LogParryEvent("Parry miss. The encounter could not accept that input.");
+            return;
+        }
 
         parryPoints++;
-        bestCircle.Consume();
         PlayParrySuccessSound();
         SpawnParrySuccessEffect(parryEffectPosition);
         PlayParrySuccessScreenFeedback();
-        LogParryEvent($"Parry! Points: {parryPoints}");
+        LogParryEvent(
+            completedEncounter
+                ? $"Parry! {bestCircle.DifficultyLabel} circle completed. Points: {parryPoints}"
+                : $"Parry! {bestCircle.DifficultyLabel} circle advanced. Points: {parryPoints}");
     }
 
-    private ShrinkingCircle FindBestCircleOnTile(Transform tileTransform)
+    public bool HasMovementLockingEncounter()
     {
-        ShrinkingCircle bestCircle = null;
-        float bestDistanceToWindowCenter = float.MaxValue;
-        float targetWindowCenter = (parryWindowMinNormalizedSize + parryWindowMaxNormalizedSize) * 0.5f;
-
         for (int i = activeCircles.Count - 1; i >= 0; i--)
         {
-            ShrinkingCircle circle = activeCircles[i];
+            ParryCircleEncounter circle = activeCircles[i];
             if (circle == null)
             {
                 activeCircles.RemoveAt(i);
                 continue;
             }
 
-            if (circle.TargetTile != tileTransform)
+            if (circle.IsLockingPlayer)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool HasActiveEncounterOnTile(Transform tileTransform)
+    {
+        for (int i = activeCircles.Count - 1; i >= 0; i--)
+        {
+            ParryCircleEncounter circle = activeCircles[i];
+            if (circle == null)
+            {
+                activeCircles.RemoveAt(i);
+                continue;
+            }
+
+            if (circle.IsOnTile(tileTransform))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private ParryCircleEncounter FindBestCircleOnTile(Transform tileTransform)
+    {
+        ParryCircleEncounter engagedCircle = null;
+        ParryCircleEncounter bestCircle = null;
+        float bestDistanceToWindowCenter = float.MaxValue;
+
+        for (int i = activeCircles.Count - 1; i >= 0; i--)
+        {
+            ParryCircleEncounter circle = activeCircles[i];
+            if (circle == null)
+            {
+                activeCircles.RemoveAt(i);
+                continue;
+            }
+
+            if (!circle.IsOnTile(tileTransform))
             {
                 continue;
             }
 
-            float distanceToWindowCenter = Mathf.Abs(circle.NormalizedSize - targetWindowCenter);
+            if (circle.IsEngaged)
+            {
+                engagedCircle = circle;
+                break;
+            }
+
+            float distanceToWindowCenter = circle.GetDistanceToWindowCenter();
             if (distanceToWindowCenter < bestDistanceToWindowCenter)
             {
                 bestDistanceToWindowCenter = distanceToWindowCenter;
@@ -144,20 +217,89 @@ public class ParryPointTracker : MonoBehaviour
             }
         }
 
-        return bestCircle;
+        return engagedCircle != null ? engagedCircle : bestCircle;
     }
 
-    private bool IsInsideParryWindow(float normalizedSize)
+    private void EnsureParryPrompt()
     {
-        return normalizedSize >= parryWindowMinNormalizedSize &&
-               normalizedSize <= parryWindowMaxNormalizedSize;
-    }
-
-    private void NormalizeParryWindow()
-    {
-        if (parryWindowMaxNormalizedSize < parryWindowMinNormalizedSize)
+        if (parryPromptText != null || playerController == null)
         {
-            parryWindowMaxNormalizedSize = parryWindowMinNormalizedSize;
+            return;
+        }
+
+        Transform playerTransform = playerController.transform;
+        Transform existingPrompt = playerTransform.Find("ParryPrompt");
+        if (existingPrompt != null)
+        {
+            parryPromptText = existingPrompt.GetComponent<TextMesh>();
+        }
+
+        if (parryPromptText == null)
+        {
+            GameObject promptObject = new("ParryPrompt");
+            promptObject.transform.SetParent(playerTransform, false);
+            parryPromptText = promptObject.AddComponent<TextMesh>();
+        }
+
+        Transform promptTransform = parryPromptText.transform;
+        promptTransform.localPosition = parryPromptOffset;
+        promptTransform.localRotation = Quaternion.identity;
+
+        parryPromptText.text = "P";
+        parryPromptText.anchor = TextAnchor.MiddleCenter;
+        parryPromptText.alignment = TextAlignment.Center;
+        parryPromptText.characterSize = parryPromptCharacterSize;
+        parryPromptText.fontSize = Mathf.Max(1, parryPromptFontSize);
+        parryPromptText.color = parryPromptColor;
+
+        MeshRenderer promptRenderer = parryPromptText.GetComponent<MeshRenderer>();
+        if (promptRenderer != null)
+        {
+            promptRenderer.sortingOrder = 100;
+        }
+
+        SetParryPromptVisible(false);
+    }
+
+    private void UpdateParryPrompt()
+    {
+        EnsureParryPrompt();
+        if (parryPromptText == null || playerController == null)
+        {
+            return;
+        }
+
+        parryPromptText.transform.localPosition = parryPromptOffset;
+        parryPromptText.color = parryPromptColor;
+        parryPromptText.characterSize = parryPromptCharacterSize;
+        parryPromptText.fontSize = Mathf.Max(1, parryPromptFontSize);
+
+        Transform playerTile = playerController.CurrentTileTransform;
+        if (playerTile == null)
+        {
+            SetParryPromptVisible(false);
+            return;
+        }
+
+        ParryCircleEncounter bestCircle = FindBestCircleOnTile(playerTile);
+        bool shouldShowPrompt = bestCircle != null &&
+                                bestCircle.CanAttemptCurrentStage &&
+                                bestCircle.IsEngaged &&
+                                bestCircle.IsInsideCurrentParryWindow();
+
+        SetParryPromptVisible(shouldShowPrompt);
+    }
+
+    private void SetParryPromptVisible(bool visible)
+    {
+        if (parryPromptText == null)
+        {
+            return;
+        }
+
+        if (parryPromptText.gameObject.activeSelf != visible)
+        {
+            parryPromptText.gameObject.SetActive(visible);
         }
     }
 

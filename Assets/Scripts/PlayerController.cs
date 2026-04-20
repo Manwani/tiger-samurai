@@ -18,7 +18,7 @@ public class PlayerController : MonoBehaviour
     private Transform[,] tileGrid;
     private bool hasBufferedMove;
     private Vector2Int bufferedMove;
-    private bool controlsLocked;
+    private int controlLockCount;
 
     public event Action<Transform> LandedOnTile;
 
@@ -34,6 +34,8 @@ public class PlayerController : MonoBehaviour
             return tileGrid[currentCell.x, currentCell.y];
         }
     }
+
+    public bool AreControlsLocked => controlLockCount > 0;
 
     private void Start()
     {
@@ -67,7 +69,7 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
-        if (controlsLocked)
+        if (AreControlsLocked)
         {
             return;
         }
@@ -185,13 +187,15 @@ public class PlayerController : MonoBehaviour
 
     public void SetControlsLocked(bool locked)
     {
-        controlsLocked = locked;
-
         if (locked)
         {
+            controlLockCount++;
             hasBufferedMove = false;
             bufferedMove = Vector2Int.zero;
+            return;
         }
+
+        controlLockCount = Mathf.Max(0, controlLockCount - 1);
     }
 
     private bool TryBuildTileGrid()
