@@ -11,6 +11,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Vector2Int startCell = new(1, 1);
     [SerializeField] private float moveDuration = 0.2f;
     [SerializeField] private float jumpHeight = 0.35f;
+    [SerializeField] private Animator playerAnimator;
+    [SerializeField] private string parryAnimationTrigger = "Parry";
 
     private Vector2Int currentCell;
     private bool isMoving;
@@ -65,10 +67,13 @@ public class PlayerController : MonoBehaviour
 
         currentCell = ClampToGrid(startCell);
         transform.position = CellToWorld(currentCell);
+        ResolvePlayerAnimator();
     }
 
     private void Update()
     {
+        PlayParryAnimationOnInput();
+
         if (AreControlsLocked)
         {
             return;
@@ -111,6 +116,67 @@ public class PlayerController : MonoBehaviour
         {
             SetBufferedMove(Vector2Int.right);
         }
+    }
+
+    private void PlayParryAnimationOnInput()
+    {
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard == null || !keyboard.spaceKey.wasPressedThisFrame)
+        {
+            return;
+        }
+
+        PlayParryAnimation();
+    }
+
+    private void PlayParryAnimation()
+    {
+        ResolvePlayerAnimator();
+        if (playerAnimator == null || string.IsNullOrEmpty(parryAnimationTrigger))
+        {
+            return;
+        }
+
+        int triggerHash = Animator.StringToHash(parryAnimationTrigger);
+        if (!HasAnimatorTrigger(triggerHash))
+        {
+            Debug.LogWarning($"Player Animator does not have a '{parryAnimationTrigger}' trigger for the parry animation.", this);
+            return;
+        }
+
+        playerAnimator.ResetTrigger(triggerHash);
+        playerAnimator.SetTrigger(triggerHash);
+    }
+
+    private bool HasAnimatorTrigger(int triggerHash)
+    {
+        if (playerAnimator == null)
+        {
+            return false;
+        }
+
+        AnimatorControllerParameter[] parameters = playerAnimator.parameters;
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            AnimatorControllerParameter parameter = parameters[i];
+            if (parameter.type == AnimatorControllerParameterType.Trigger &&
+                parameter.nameHash == triggerHash)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ResolvePlayerAnimator()
+    {
+        if (playerAnimator != null)
+        {
+            return;
+        }
+
+        playerAnimator = GetComponentInChildren<Animator>();
     }
 
     private IEnumerator JumpToCell(Vector2Int targetCell)

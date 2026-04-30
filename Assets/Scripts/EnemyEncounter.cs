@@ -13,16 +13,17 @@ public class EnemyEncounter : MonoBehaviour
         Right
     }
 
-    private static readonly SequenceInput[] RequiredSequence =
+    private static readonly SequenceInput[] RandomInputPool =
     {
         SequenceInput.Up,
-        SequenceInput.Up,
         SequenceInput.Down,
-        SequenceInput.Up
+        SequenceInput.Left,
+        SequenceInput.Right
     };
 
     [SerializeField] private Vector3 popupOffset = new(0f, 1.1f, 0f);
     [SerializeField] private int popupSortingOrder = 10;
+    [SerializeField, Min(1)] private int requiredSequenceLength = 6;
     [SerializeField] private float defeatDelay = 0.18f;
     [SerializeField] private bool logSequenceEvents = true;
 
@@ -33,6 +34,7 @@ public class EnemyEncounter : MonoBehaviour
     private int sequenceIndex;
     private bool encounterActive;
     private bool isDefeated;
+    private SequenceInput[] requiredSequence = System.Array.Empty<SequenceInput>();
     private Sprite[] cachedSequenceSprites;
 
     public Transform TargetTile => targetTile;
@@ -50,6 +52,7 @@ public class EnemyEncounter : MonoBehaviour
             return;
         }
 
+        GenerateRandomSequence();
         playerController.LandedOnTile += HandlePlayerLanded;
     }
 
@@ -92,6 +95,11 @@ public class EnemyEncounter : MonoBehaviour
         }
     }
 
+    private void OnValidate()
+    {
+        requiredSequenceLength = Mathf.Max(1, requiredSequenceLength);
+    }
+
     private void HandlePlayerLanded(Transform landedTile)
     {
         if (encounterActive || isDefeated || landedTile != targetTile)
@@ -104,6 +112,11 @@ public class EnemyEncounter : MonoBehaviour
 
     private void BeginEncounter()
     {
+        if (requiredSequence == null || requiredSequence.Length == 0)
+        {
+            GenerateRandomSequence();
+        }
+
         encounterActive = true;
         sequenceIndex = 0;
         playerController.SetControlsLocked(true);
@@ -115,11 +128,16 @@ public class EnemyEncounter : MonoBehaviour
 
     private void HandleSequenceInput(SequenceInput input)
     {
-        if (input == RequiredSequence[sequenceIndex])
+        if (requiredSequence == null || requiredSequence.Length == 0)
+        {
+            GenerateRandomSequence();
+        }
+
+        if (input == requiredSequence[sequenceIndex])
         {
             sequenceIndex++;
 
-            if (sequenceIndex >= RequiredSequence.Length)
+            if (sequenceIndex >= requiredSequence.Length)
             {
                 DefeatEnemy();
                 return;
@@ -130,7 +148,7 @@ public class EnemyEncounter : MonoBehaviour
             return;
         }
 
-        sequenceIndex = input == RequiredSequence[0] ? 1 : 0;
+        sequenceIndex = input == requiredSequence[0] ? 1 : 0;
         if (popup != null)
         {
             popup.FlashFailure();
@@ -138,6 +156,20 @@ public class EnemyEncounter : MonoBehaviour
 
         UpdatePopupDisplay();
         LogSequenceEvent($"Wrong input: {input}. Sequence reset.");
+    }
+
+    private void GenerateRandomSequence()
+    {
+        int sequenceLength = Mathf.Max(1, requiredSequenceLength);
+        requiredSequence = new SequenceInput[sequenceLength];
+
+        for (int i = 0; i < requiredSequence.Length; i++)
+        {
+            int randomIndex = Random.Range(0, RandomInputPool.Length);
+            requiredSequence[i] = RandomInputPool[randomIndex];
+        }
+
+        cachedSequenceSprites = null;
     }
 
     private void DefeatEnemy()
@@ -223,15 +255,20 @@ public class EnemyEncounter : MonoBehaviour
 
     private Sprite[] GetSequenceSprites()
     {
-        if (cachedSequenceSprites != null && cachedSequenceSprites.Length == RequiredSequence.Length)
+        if (requiredSequence == null || requiredSequence.Length == 0)
+        {
+            GenerateRandomSequence();
+        }
+
+        if (cachedSequenceSprites != null && cachedSequenceSprites.Length == requiredSequence.Length)
         {
             return cachedSequenceSprites;
         }
 
-        cachedSequenceSprites = new Sprite[RequiredSequence.Length];
-        for (int i = 0; i < RequiredSequence.Length; i++)
+        cachedSequenceSprites = new Sprite[requiredSequence.Length];
+        for (int i = 0; i < requiredSequence.Length; i++)
         {
-            cachedSequenceSprites[i] = GetPromptSprite(RequiredSequence[i]);
+            cachedSequenceSprites[i] = GetPromptSprite(requiredSequence[i]);
         }
 
         return cachedSequenceSprites;

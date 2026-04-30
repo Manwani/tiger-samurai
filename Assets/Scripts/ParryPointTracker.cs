@@ -5,17 +5,23 @@ using UnityEngine.InputSystem;
 [DisallowMultipleComponent]
 public class ParryPointTracker : MonoBehaviour
 {
+    private const string PlayerVisualName = "PlayerVisual";
+    private const string ParryBurstPointName = "ParryBurstPoint";
+
     [SerializeField] private PlayerController playerController;
     [SerializeField] private AudioSource audioSource;
     [SerializeField] private AudioClip parrySuccessClip;
     [SerializeField] private GameObject parrySuccessEffectPrefab;
+    [SerializeField] private Transform parrySuccessEffectSpawnPoint;
     [SerializeField] private ParryScreenFeedback parryScreenFeedback;
+    [SerializeField] private Transform parryPromptAnchor;
     [SerializeField] private Vector3 parryPromptOffset = new(0f, 0.95f, 0f);
     [SerializeField] private Color parryPromptColor = Color.white;
     [SerializeField, Min(0.01f)] private float parryPromptCharacterSize = 0.18f;
     [SerializeField] private int parryPromptFontSize = 64;
     [SerializeField, Min(0.01f)] private float parryPitchMin = 0.9f;
     [SerializeField, Min(0.01f)] private float parryPitchMax = 1.1f;
+    [SerializeField] private ExpBarController expBarController;
     [SerializeField] private bool logParryAttempts = true;
     [SerializeField] private int parryPoints;
 
@@ -47,6 +53,7 @@ public class ParryPointTracker : MonoBehaviour
         ResolveParryScreenFeedback();
         EnsureParryPrompt();
         NormalizePitchRange();
+        ResolveExpBarController();
     }
 
     private void Update()
@@ -98,6 +105,7 @@ public class ParryPointTracker : MonoBehaviour
         Transform playerTile = playerController.CurrentTileTransform;
         if (playerTile == null)
         {
+            ResetParryFeedbackStreak();
             LogParryEvent("Parry miss. The player is not on a valid tile.");
             return;
         }
@@ -105,6 +113,7 @@ public class ParryPointTracker : MonoBehaviour
         ParryCircleEncounter bestCircle = FindBestCircleOnTile(playerTile);
         if (bestCircle == null)
         {
+            ResetParryFeedbackStreak();
             LogParryEvent("Parry miss. There is no active circle on the player's tile.");
             return;
         }
@@ -118,29 +127,33 @@ public class ParryPointTracker : MonoBehaviour
         {
             if (bestCircle.HandleMissedParryAttempt())
             {
+                ResetParryFeedbackStreak();
                 LogParryEvent($"Parry miss. Circle size {bestCircle.NormalizedSize:F2} is outside the parry window, so it sped up.");
             }
 
             return;
         }
 
-        Vector3 parryEffectPosition = bestCircle.transform.position;
+        Vector3 fallbackParryEffectPosition = bestCircle.transform.position;
         bool completedEncounter;
 
         if (!bestCircle.TryResolveParry(out completedEncounter))
         {
+            ResetParryFeedbackStreak();
             LogParryEvent("Parry miss. The encounter could not accept that input.");
             return;
         }
 
         parryPoints++;
         PlayParrySuccessSound();
+        Vector3 parryEffectPosition = GetParrySuccessEffectPosition(fallbackParryEffectPosition);
         SpawnParrySuccessEffect(parryEffectPosition);
         PlayParrySuccessScreenFeedback();
         LogParryEvent(
             completedEncounter
                 ? $"Parry! {bestCircle.DifficultyLabel} circle completed. Points: {parryPoints}"
                 : $"Parry! {bestCircle.DifficultyLabel} circle advanced. Points: {parryPoints}");
+        expBarController?.AddParryExp();
     }
 
     public bool HasMovementLockingEncounter()
@@ -222,26 +235,45 @@ public class ParryPointTracker : MonoBehaviour
 
     private void EnsureParryPrompt()
     {
-        if (parryPromptText != null || playerController == null)
+        if (playerController == null)
         {
             return;
         }
 
-        Transform playerTransform = playerController.transform;
-        Transform existingPrompt = playerTransform.Find("ParryPrompt");
-        if (existingPrompt != null)
+        Transform promptAnchor = ResolveParryPromptAnchor();
+        if (promptAnchor == null)
         {
-            parryPromptText = existingPrompt.GetComponent<TextMesh>();
+            return;
+        }
+
+        bool hadPrompt = parryPromptText != null;
+        if (parryPromptText == null)
+        {
+            Transform existingPrompt = promptAnchor.Find("ParryPrompt");
+            if (existingPrompt == null)
+            {
+                existingPrompt = playerController.transform.Find("ParryPrompt");
+            }
+
+            if (existingPrompt != null)
+            {
+                parryPromptText = existingPrompt.GetComponent<TextMesh>();
+            }
         }
 
         if (parryPromptText == null)
         {
             GameObject promptObject = new("ParryPrompt");
-            promptObject.transform.SetParent(playerTransform, false);
+            promptObject.transform.SetParent(promptAnchor, false);
             parryPromptText = promptObject.AddComponent<TextMesh>();
         }
 
         Transform promptTransform = parryPromptText.transform;
+        if (promptTransform.parent != promptAnchor)
+        {
+            promptTransform.SetParent(promptAnchor, false);
+        }
+
         promptTransform.localPosition = parryPromptOffset;
         promptTransform.localRotation = Quaternion.identity;
 
@@ -258,7 +290,22 @@ public class ParryPointTracker : MonoBehaviour
             promptRenderer.sortingOrder = 100;
         }
 
-        SetParryPromptVisible(false);
+        if (!hadPrompt)
+        {
+            SetParryPromptVisible(false);
+        }
+    }
+
+    private Transform ResolveParryPromptAnchor()
+    {
+        if (parryPromptAnchor != null)
+        {
+            return parryPromptAnchor;
+        }
+
+        Transform playerTransform = playerController.transform;
+        Transform playerVisual = ResolvePlayerVisual();
+        return playerVisual != null ? playerVisual : playerTransform;
     }
 
     private void UpdateParryPrompt()
@@ -311,6 +358,32 @@ public class ParryPointTracker : MonoBehaviour
         }
     }
 
+    private void ResolveExpBarController()
+    {
+        if (expBarController != null)
+        {
+            return;
+        }
+
+        expBarController = FindFirstObjectByType<ExpBarController>();
+        if (expBarController != null)
+        {
+            return;
+        }
+
+        GameObject expBarObject = GameObject.Find("ExpBar");
+        if (expBarObject == null)
+        {
+            return;
+        }
+
+        expBarController = expBarObject.GetComponent<ExpBarController>();
+        if (expBarController == null)
+        {
+            expBarController = expBarObject.AddComponent<ExpBarController>();
+        }
+    }
+
     private void EnsureAudioSource()
     {
         if (audioSource == null)
@@ -351,10 +424,75 @@ public class ParryPointTracker : MonoBehaviour
         Instantiate(parrySuccessEffectPrefab, position, parrySuccessEffectPrefab.transform.rotation);
     }
 
+    private Vector3 GetParrySuccessEffectPosition(Vector3 fallbackPosition)
+    {
+        Transform spawnPoint = ResolveParrySuccessEffectSpawnPoint();
+        return spawnPoint != null ? spawnPoint.position : fallbackPosition;
+    }
+
+    private Transform ResolveParrySuccessEffectSpawnPoint()
+    {
+        if (parrySuccessEffectSpawnPoint != null)
+        {
+            return parrySuccessEffectSpawnPoint;
+        }
+
+        Transform playerVisual = ResolvePlayerVisual();
+        if (playerVisual == null)
+        {
+            return null;
+        }
+
+        parrySuccessEffectSpawnPoint = FindChildRecursive(playerVisual, ParryBurstPointName);
+        return parrySuccessEffectSpawnPoint;
+    }
+
+    private Transform ResolvePlayerVisual()
+    {
+        if (playerController == null)
+        {
+            return null;
+        }
+
+        Transform playerTransform = playerController.transform;
+        Transform playerVisual = playerTransform.Find(PlayerVisualName);
+        return playerVisual != null ? playerVisual : FindChildRecursive(playerTransform, PlayerVisualName);
+    }
+
+    private static Transform FindChildRecursive(Transform parent, string childName)
+    {
+        if (parent == null)
+        {
+            return null;
+        }
+
+        foreach (Transform child in parent)
+        {
+            if (string.Equals(child.name, childName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return child;
+            }
+
+            Transform nestedChild = FindChildRecursive(child, childName);
+            if (nestedChild != null)
+            {
+                return nestedChild;
+            }
+        }
+
+        return null;
+    }
+
     private void PlayParrySuccessScreenFeedback()
     {
         ResolveParryScreenFeedback();
-        parryScreenFeedback?.PlayParryFeedback();
+        parryScreenFeedback?.PlayParryFeedback(playerController.transform.position);
+    }
+
+    private void ResetParryFeedbackStreak()
+    {
+        ResolveParryScreenFeedback();
+        parryScreenFeedback?.ResetParryZoomStreak();
     }
 
     private void PreloadParrySound()

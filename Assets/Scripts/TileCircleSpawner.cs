@@ -48,6 +48,8 @@ public class TileCircleSpawner : MonoBehaviour
     private Material runtimeLineMaterial;
     private SpriteRenderer startingPlayerTile;
     private ParryCircleEncounter activeEncounter;
+    private Coroutine spawnLoopCoroutine;
+    private bool hasStoppedSpawning;
 
     private void Start()
     {
@@ -89,7 +91,7 @@ public class TileCircleSpawner : MonoBehaviour
             return;
         }
 
-        StartCoroutine(SpawnLoop());
+        spawnLoopCoroutine = StartCoroutine(SpawnLoop());
     }
 
     private void OnValidate()
@@ -109,7 +111,7 @@ public class TileCircleSpawner : MonoBehaviour
     {
         yield return null;
 
-        while (enabled)
+        while (enabled && !hasStoppedSpawning)
         {
             if (activeEncounter != null)
             {
@@ -130,6 +132,25 @@ public class TileCircleSpawner : MonoBehaviour
 
             yield return new WaitForSeconds(Mathf.Max(0.05f, spawnInterval));
         }
+    }
+
+    public void StopSpawningAndClearActiveCircle()
+    {
+        hasStoppedSpawning = true;
+
+        if (spawnLoopCoroutine != null)
+        {
+            StopCoroutine(spawnLoopCoroutine);
+            spawnLoopCoroutine = null;
+        }
+
+        if (activeEncounter != null)
+        {
+            Destroy(activeEncounter.gameObject);
+            activeEncounter = null;
+        }
+
+        enabled = false;
     }
 
     private bool SpawnCircle()
