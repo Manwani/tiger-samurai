@@ -12,7 +12,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float moveDuration = 0.2f;
     [SerializeField] private float jumpHeight = 0.35f;
     [SerializeField] private Animator playerAnimator;
+    [SerializeField] private SpriteRenderer playerSpriteRenderer;
     [SerializeField] private string parryAnimationTrigger = "Parry";
+    [SerializeField] private string dashAnimationTrigger = "Dash";
 
     private Vector2Int currentCell;
     private bool isMoving;
@@ -21,6 +23,7 @@ public class PlayerController : MonoBehaviour
     private bool hasBufferedMove;
     private Vector2Int bufferedMove;
     private int controlLockCount;
+    private bool normalSpriteFlipX;
 
     public event Action<Transform> LandedOnTile;
 
@@ -68,6 +71,11 @@ public class PlayerController : MonoBehaviour
         currentCell = ClampToGrid(startCell);
         transform.position = CellToWorld(currentCell);
         ResolvePlayerAnimator();
+        ResolvePlayerSpriteRenderer();
+        if (playerSpriteRenderer != null)
+        {
+            normalSpriteFlipX = playerSpriteRenderer.flipX;
+        }
     }
 
     private void Update()
@@ -126,21 +134,21 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        PlayParryAnimation();
+        PlayAnimationTrigger(parryAnimationTrigger, "parry");
     }
 
-    private void PlayParryAnimation()
+    private void PlayAnimationTrigger(string triggerName, string animationName)
     {
         ResolvePlayerAnimator();
-        if (playerAnimator == null || string.IsNullOrEmpty(parryAnimationTrigger))
+        if (playerAnimator == null || string.IsNullOrEmpty(triggerName))
         {
             return;
         }
 
-        int triggerHash = Animator.StringToHash(parryAnimationTrigger);
+        int triggerHash = Animator.StringToHash(triggerName);
         if (!HasAnimatorTrigger(triggerHash))
         {
-            Debug.LogWarning($"Player Animator does not have a '{parryAnimationTrigger}' trigger for the parry animation.", this);
+            Debug.LogWarning($"Player Animator does not have a '{triggerName}' trigger for the {animationName} animation.", this);
             return;
         }
 
@@ -179,7 +187,17 @@ public class PlayerController : MonoBehaviour
         playerAnimator = GetComponentInChildren<Animator>();
     }
 
-    private IEnumerator JumpToCell(Vector2Int targetCell)
+    private void ResolvePlayerSpriteRenderer()
+    {
+        if (playerSpriteRenderer != null)
+        {
+            return;
+        }
+
+        playerSpriteRenderer = GetComponentInChildren<SpriteRenderer>();
+    }
+
+    private IEnumerator JumpToCell(Vector2Int targetCell, bool restoreDashFacing)
     {
         isMoving = true;
 
@@ -202,6 +220,11 @@ public class PlayerController : MonoBehaviour
 
         currentCell = targetCell;
         transform.position = endPosition;
+        if (restoreDashFacing)
+        {
+            RestoreNormalFacing();
+        }
+
         isMoving = false;
         LandedOnTile?.Invoke(CurrentTileTransform);
         TryStartBufferedMove();
@@ -242,7 +265,36 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        StartCoroutine(JumpToCell(nextCell));
+        bool isHorizontalDash = bufferedMove.x != 0;
+        if (isHorizontalDash)
+        {
+            SetDashFacing(bufferedMove);
+            PlayAnimationTrigger(dashAnimationTrigger, "dash");
+        }
+
+        StartCoroutine(JumpToCell(nextCell, isHorizontalDash));
+    }
+
+    private void SetDashFacing(Vector2Int move)
+    {
+        ResolvePlayerSpriteRenderer();
+        if (playerSpriteRenderer == null)
+        {
+            return;
+        }
+
+        playerSpriteRenderer.flipX = move.x > 0;
+    }
+
+    private void RestoreNormalFacing()
+    {
+        ResolvePlayerSpriteRenderer();
+        if (playerSpriteRenderer == null)
+        {
+            return;
+        }
+
+        playerSpriteRenderer.flipX = normalSpriteFlipX;
     }
 
     private void SetBufferedMove(Vector2Int move)

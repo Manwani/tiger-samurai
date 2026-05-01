@@ -1649,9 +1649,10 @@ MonoBehaviour:
   gridSize: {x: 3, y: 3}
   startCell: {x: 1, y: 1}
   moveDuration: 0.2
-  jumpHeight: 0.35
+  jumpHeight: 0.15
   playerAnimator: {fileID: 1668882667}
   parryAnimationTrigger: Parry
+  dashAnimationTrigger: Dash
 --- !u!1 &1641987050
 GameObject:
   m_ObjectHideFlags: 0

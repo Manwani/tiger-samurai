@@ -2,7 +2,7 @@
 
 **Project Name:** TigerSamurai  
 **Active Branch:** `main`  
-**Last Updated:** `2026-04-24`
+**Last Updated:** `2026-05-01`
 **Current Focus:** First-pass parry encounter progression with a broader white/red/blue/black difficulty ladder, one-at-a-time idle pacing, clearer parry timing feedback, stricter anti-spam parry rules, streak-based parry zoom toward the player, a basic `ExpBarController` that fills and sparkles on parries, starts the enemy phase, and randomized six-input enemy defeat prompts.
 **Status:** Active prototype development
 
@@ -32,6 +32,14 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - Keep this document synchronized with actual repo state whenever priorities, instructions, or scope change.
 
 ## Outstanding Tasks
+### Next Session Notes
+- [ ] Add smoke particle effects when the character dashes.
+- [ ] Add directional dash animations for forward and back movement.
+- [ ] Figure out the proper frames for the parry animation.
+- [ ] Add a triangle enemy variant that requires holding the parry button.
+- [ ] Make the parry button cancel and immediately restart the parry animation when pressed, so parry input feels more responsive.
+- [ ] When a circle parry enemy is fully defeated, spawn particles that travel to the EXP bar and increase it for a stronger reward effect.
+
 ### Current Priority
 - [ ] Play-test the first-pass white/red parry encounter flow and tune whether red circles feel fair.
 - [x] Bring `TileCircleSpawner` out of debug mode so circles spawn in the intended gameplay flow instead of always using the starting player tile.
