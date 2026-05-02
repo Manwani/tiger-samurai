@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -367,6 +368,8 @@ public class ParryCircleEncounter : MonoBehaviour
     public bool IsLockingPlayer => controlsLockedByEncounter;
     public string DifficultyLabel => settings != null ? settings.Label : string.Empty;
 
+    public event Action<ParryCircleEncounter, bool> Resolved;
+
     public void Initialize(
         LineRenderer targetLineRenderer,
         float radius,
@@ -600,13 +603,23 @@ public class ParryCircleEncounter : MonoBehaviour
 
     private void CompleteEncounter()
     {
-        hasBeenResolved = true;
-        Destroy(gameObject);
+        ResolveEncounter(true);
     }
 
     private void FailEncounter()
     {
+        ResolveEncounter(false);
+    }
+
+    private void ResolveEncounter(bool completed)
+    {
+        if (hasBeenResolved)
+        {
+            return;
+        }
+
         hasBeenResolved = true;
+        Resolved?.Invoke(this, completed);
         Destroy(gameObject);
     }
 

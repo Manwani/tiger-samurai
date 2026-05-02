@@ -25,8 +25,10 @@ public class TileCircleSpawner : MonoBehaviour
     [SerializeField] private Transform playerTransform;
     [SerializeField] private PlayerController playerController;
     [SerializeField] private ParryPointTracker parryPointTracker;
+    [SerializeField] private LivesController livesController;
     [SerializeField] private SpawnMode spawnMode = SpawnMode.RandomTile;
     [SerializeField] private bool avoidPlayerTile = true;
+    [SerializeField, Min(1)] private int maxActiveCircles = 2;
     [SerializeField] private float spawnInterval = 1f;
     [SerializeField] private float lineWidth = 0.08f;
     [SerializeField, Min(0f)] private float circlePaddingPixels = 500f;
@@ -45,9 +47,12 @@ public class TileCircleSpawner : MonoBehaviour
 
     private readonly List<SpriteRenderer> tileRenderers = new();
     private readonly List<SpriteRenderer> candidateTiles = new();
+    private readonly List<ParryCircleEncounter> activeEncounters = new();
+    private readonly List<ParryCircleEncounter.Settings> candidateSettings = new();
+    private readonly List<float> candidateSettingWeights = new();
+    private readonly List<string> waveDifficultyLabels = new();
     private Material runtimeLineMaterial;
     private SpriteRenderer startingPlayerTile;
-    private ParryCircleEncounter activeEncounter;
     private Coroutine spawnLoopCoroutine;
     private bool hasStoppedSpawning;
 
@@ -83,6 +88,8 @@ public class TileCircleSpawner : MonoBehaviour
             return;
         }
 
+        ResolveLivesController();
+
         runtimeLineMaterial = CreateRuntimeLineMaterial();
         if (runtimeLineMaterial == null)
         {
@@ -96,6 +103,7 @@ public class TileCircleSpawner : MonoBehaviour
 
     private void OnValidate()
     {
+        maxActiveCircles = Mathf.Max(1, maxActiveCircles);
         NormalizeEncounterSettings();
     }
 
@@ -113,21 +121,47 @@ public class TileCircleSpawner : MonoBehaviour
 
         while (enabled && !hasStoppedSpawning)
         {
-            if (activeEncounter != null)
+            PruneInactiveEncounters();
+            if (activeEncounters.Count > 0)
             {
                 yield return null;
                 continue;
             }
 
-            if (!SpawnCircle())
+            int spawnedCount = SpawnCircleWave();
+            if (spawnedCount == 0)
             {
                 yield return null;
                 continue;
             }
 
-            while (activeEncounter != null)
+            while (enabled && !hasStoppedSpawning)
             {
+                PruneInactiveEncounters();
+                if (activeEncounters.Count == 0)
+                {
+                    break;
+                }
+
+                ParryCircleEncounter chosenEncounter = FindEngagedEncounter();
+                if (chosenEncounter != null && activeEncounters.Count > 1)
+                {
+                    ClearUnchosenEncounters(chosenEncounter);
+                    spawnedCount = activeEncounters.Count;
+                }
+
+                if (activeEncounters.Count < spawnedCount)
+                {
+                    ClearActiveEncounters();
+                    break;
+                }
+
                 yield return null;
+            }
+
+            if (!enabled || hasStoppedSpawning)
+            {
+                yield break;
             }
 
             yield return new WaitForSeconds(Mathf.Max(0.05f, spawnInterval));
@@ -144,16 +178,91 @@ public class TileCircleSpawner : MonoBehaviour
             spawnLoopCoroutine = null;
         }
 
-        if (activeEncounter != null)
-        {
-            Destroy(activeEncounter.gameObject);
-            activeEncounter = null;
-        }
+        ClearActiveEncounters();
 
         enabled = false;
     }
 
-    private bool SpawnCircle()
+    private int SpawnCircleWave()
+    {
+        int circlesToSpawn = Mathf.Max(1, maxActiveCircles);
+        int spawnedCount = 0;
+        waveDifficultyLabels.Clear();
+
+        for (int i = 0; i < circlesToSpawn; i++)
+        {
+            if (!SpawnCircle(waveDifficultyLabels))
+            {
+                break;
+            }
+
+            spawnedCount++;
+        }
+
+        return spawnedCount;
+    }
+
+    private ParryCircleEncounter FindEngagedEncounter()
+    {
+        for (int i = activeEncounters.Count - 1; i >= 0; i--)
+        {
+            ParryCircleEncounter encounter = activeEncounters[i];
+            if (encounter != null && encounter.IsEngaged)
+            {
+                return encounter;
+            }
+        }
+
+        return null;
+    }
+
+    private void ClearActiveEncounters()
+    {
+        for (int i = activeEncounters.Count - 1; i >= 0; i--)
+        {
+            ParryCircleEncounter encounter = activeEncounters[i];
+            if (encounter != null)
+            {
+                Destroy(encounter.gameObject);
+            }
+        }
+
+        activeEncounters.Clear();
+    }
+
+    private void ClearUnchosenEncounters(ParryCircleEncounter chosenEncounter)
+    {
+        for (int i = activeEncounters.Count - 1; i >= 0; i--)
+        {
+            ParryCircleEncounter encounter = activeEncounters[i];
+            if (encounter == null)
+            {
+                activeEncounters.RemoveAt(i);
+                continue;
+            }
+
+            if (encounter == chosenEncounter)
+            {
+                continue;
+            }
+
+            Destroy(encounter.gameObject);
+            activeEncounters.RemoveAt(i);
+        }
+    }
+
+    private void PruneInactiveEncounters()
+    {
+        for (int i = activeEncounters.Count - 1; i >= 0; i--)
+        {
+            if (activeEncounters[i] == null)
+            {
+                activeEncounters.RemoveAt(i);
+            }
+        }
+    }
+
+    private bool SpawnCircle(List<string> usedDifficultyLabels)
     {
         SpriteRenderer tile = GetSpawnTile();
         if (tile == null)
@@ -161,7 +270,12 @@ public class TileCircleSpawner : MonoBehaviour
             return false;
         }
 
-        ParryCircleEncounter.Settings encounterSettings = ChooseEncounterSettings();
+        ParryCircleEncounter.Settings encounterSettings = ChooseEncounterSettings(usedDifficultyLabels);
+        if (encounterSettings == null)
+        {
+            return false;
+        }
+
         Bounds tileBounds = tile.bounds;
         float radius = (Mathf.Min(tileBounds.size.x, tileBounds.size.y) * 0.5f * circleSizeMultiplier) +
                        GetPaddingInWorldUnits(tile, circlePaddingPixels);
@@ -177,8 +291,26 @@ public class TileCircleSpawner : MonoBehaviour
 
         ParryCircleEncounter encounter = circleObject.AddComponent<ParryCircleEncounter>();
         encounter.Initialize(lineRenderer, radius, tile.transform, playerController, parryPointTracker, encounterSettings);
-        activeEncounter = encounter;
+        encounter.Resolved += HandleEncounterResolved;
+        activeEncounters.Add(encounter);
+        usedDifficultyLabels?.Add(GetDifficultyKey(encounterSettings));
         return true;
+    }
+
+    private void HandleEncounterResolved(ParryCircleEncounter encounter, bool completed)
+    {
+        if (encounter != null)
+        {
+            encounter.Resolved -= HandleEncounterResolved;
+        }
+
+        if (completed)
+        {
+            return;
+        }
+
+        ResolveLivesController();
+        livesController?.LoseLife();
     }
 
     private bool UsesStartingPlayerTile()
@@ -186,7 +318,7 @@ public class TileCircleSpawner : MonoBehaviour
         return spawnMode == SpawnMode.StartingPlayerTile;
     }
 
-    private ParryCircleEncounter.Settings ChooseEncounterSettings()
+    private ParryCircleEncounter.Settings ChooseEncounterSettings(List<string> usedDifficultyLabels)
     {
         if (redCircleSettings == null)
         {
@@ -208,16 +340,10 @@ public class TileCircleSpawner : MonoBehaviour
             whiteCircleSettings = ParryCircleEncounter.Settings.CreateWhiteDefaults();
         }
 
-        switch (debugSpawnFilter)
+        ParryCircleEncounter.Settings filteredSettings = GetDebugFilteredSettings();
+        if (filteredSettings != null)
         {
-            case DebugSpawnFilter.WhiteOnly:
-                return whiteCircleSettings;
-            case DebugSpawnFilter.RedOnly:
-                return redCircleSettings;
-            case DebugSpawnFilter.BlueOnly:
-                return blueCircleSettings;
-            case DebugSpawnFilter.BlackOnly:
-                return blackCircleSettings;
+            return HasUsedDifficultyLabel(filteredSettings, usedDifficultyLabels) ? null : filteredSettings;
         }
 
         float redChance = Mathf.Clamp01(redCircleChance);
@@ -233,25 +359,97 @@ public class TileCircleSpawner : MonoBehaviour
             blackChance *= normalizationFactor;
         }
 
-        float roll = Random.value;
-        if (roll < blackChance)
+        float whiteChance = Mathf.Max(0f, 1f - (redChance + blueChance + blackChance));
+        candidateSettings.Clear();
+        candidateSettingWeights.Clear();
+
+        AddEncounterCandidate(blackCircleSettings, blackChance, usedDifficultyLabels);
+        AddEncounterCandidate(blueCircleSettings, blueChance, usedDifficultyLabels);
+        AddEncounterCandidate(redCircleSettings, redChance, usedDifficultyLabels);
+        AddEncounterCandidate(whiteCircleSettings, whiteChance, usedDifficultyLabels);
+
+        return ChooseWeightedCandidate();
+    }
+
+    private ParryCircleEncounter.Settings GetDebugFilteredSettings()
+    {
+        switch (debugSpawnFilter)
         {
-            return blackCircleSettings;
+            case DebugSpawnFilter.WhiteOnly:
+                return whiteCircleSettings;
+            case DebugSpawnFilter.RedOnly:
+                return redCircleSettings;
+            case DebugSpawnFilter.BlueOnly:
+                return blueCircleSettings;
+            case DebugSpawnFilter.BlackOnly:
+                return blackCircleSettings;
+            default:
+                return null;
+        }
+    }
+
+    private void AddEncounterCandidate(
+        ParryCircleEncounter.Settings settings,
+        float weight,
+        List<string> usedDifficultyLabels)
+    {
+        if (settings == null || HasUsedDifficultyLabel(settings, usedDifficultyLabels))
+        {
+            return;
         }
 
-        roll -= blackChance;
-        if (roll < blueChance)
+        candidateSettings.Add(settings);
+        candidateSettingWeights.Add(Mathf.Max(0f, weight));
+    }
+
+    private ParryCircleEncounter.Settings ChooseWeightedCandidate()
+    {
+        if (candidateSettings.Count == 0)
         {
-            return blueCircleSettings;
+            return null;
         }
 
-        roll -= blueChance;
-        if (roll < redChance)
+        float totalWeight = 0f;
+        for (int i = 0; i < candidateSettingWeights.Count; i++)
         {
-            return redCircleSettings;
+            totalWeight += candidateSettingWeights[i];
         }
 
-        return whiteCircleSettings;
+        if (totalWeight <= 0f)
+        {
+            int randomIndex = Random.Range(0, candidateSettings.Count);
+            return candidateSettings[randomIndex];
+        }
+
+        float roll = Random.value * totalWeight;
+        for (int i = 0; i < candidateSettings.Count; i++)
+        {
+            roll -= candidateSettingWeights[i];
+            if (roll <= 0f)
+            {
+                return candidateSettings[i];
+            }
+        }
+
+        return candidateSettings[candidateSettings.Count - 1];
+    }
+
+    private static bool HasUsedDifficultyLabel(
+        ParryCircleEncounter.Settings settings,
+        List<string> usedDifficultyLabels)
+    {
+        return usedDifficultyLabels != null &&
+               usedDifficultyLabels.Contains(GetDifficultyKey(settings));
+    }
+
+    private static string GetDifficultyKey(ParryCircleEncounter.Settings settings)
+    {
+        if (settings == null || string.IsNullOrWhiteSpace(settings.Label))
+        {
+            return string.Empty;
+        }
+
+        return settings.Label.Trim().ToLowerInvariant();
     }
 
     private SpriteRenderer GetSpawnTile()
@@ -397,6 +595,23 @@ public class TileCircleSpawner : MonoBehaviour
         }
 
         return true;
+    }
+
+    private void ResolveLivesController()
+    {
+        if (livesController != null)
+        {
+            return;
+        }
+
+        livesController = FindFirstObjectByType<LivesController>();
+        if (livesController != null)
+        {
+            return;
+        }
+
+        GameObject livesObject = new("LivesController");
+        livesController = livesObject.AddComponent<LivesController>();
     }
 
     private SpriteRenderer GetStartingPlayerTile()

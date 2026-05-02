@@ -1651,6 +1651,7 @@ MonoBehaviour:
   moveDuration: 0.2
   jumpHeight: 0.15
   playerAnimator: {fileID: 1668882667}
+  playerSpriteRenderer: {fileID: 0}
   parryAnimationTrigger: Parry
   dashAnimationTrigger: Dash
 --- !u!1 &1641987050

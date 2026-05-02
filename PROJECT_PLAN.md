@@ -2,8 +2,8 @@
 
 **Project Name:** TigerSamurai  
 **Active Branch:** `main`  
-**Last Updated:** `2026-05-01`
-**Current Focus:** First-pass parry encounter progression with a broader white/red/blue/black difficulty ladder, one-at-a-time idle pacing, clearer parry timing feedback, stricter anti-spam parry rules, streak-based parry zoom toward the player, a basic `ExpBarController` that fills and sparkles on parries, starts the enemy phase, and randomized six-input enemy defeat prompts.
+**Last Updated:** `2026-05-02`
+**Current Focus:** Testing whether two simultaneous, different-colored parry circles plus a simple 3-life fail state gives the player a more interesting board decision, while keeping the broader white/red/blue/black difficulty ladder, clearer parry timing feedback, stricter anti-spam parry rules, streak-based parry zoom toward the player, a basic `ExpBarController` that fills and sparkles on parries, starts the enemy phase, and randomized six-input enemy defeat prompts.
 **Status:** Active prototype development
 
 ## Ongoing Instructions For Assistant
@@ -41,6 +41,8 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - [ ] When a circle parry enemy is fully defeated, spawn particles that travel to the EXP bar and increase it for a stronger reward effect.
 
 ### Current Priority
+- [ ] Play-test two simultaneous different-colored parry circles that wipe the unchosen circle as soon as the player engages a circle, then decide whether this should stay as the main board-choice rhythm.
+- [ ] Play-test the new lives counter and confirm whether game over at 0 lives feels fair.
 - [ ] Play-test the first-pass white/red parry encounter flow and tune whether red circles feel fair.
 - [x] Bring `TileCircleSpawner` out of debug mode so circles spawn in the intended gameplay flow instead of always using the starting player tile.
 - [ ] Play-test the combined parry sound, particle, shake, flash, and movement lock feedback together and tune anything that feels too strong or distracting.
@@ -117,3 +119,15 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - **Key Decisions:** Keep the existing zoom-out timing behavior; treat `zoomAmount` as the per-parry zoom step; cap the streak at five successful parries; reset the zoom streak on missed parry attempts.
 - **What Changed:** Updated `ParryScreenFeedback` to combine shake and zoom offsets cleanly, move the camera toward the player during the zoom punch, and expose `maxZoomStreak` plus `zoomFocusStrength`; updated `ParryPointTracker` to pass the player position on success and reset the streak on misses.
 - **Next Likely Step:** Play-test whether full streak zoom feels readable at five parries or should use a lower `zoomFocusStrength`.
+
+### 2026-05-02 - Two-Circle Board Choice Experiment
+- **Goal:** Give the player a simple choice on the 3x3 board instead of only chasing one active parry circle.
+- **Key Decisions:** Keep the experiment inside `TileCircleSpawner`; spawn two different-colored circles as a wave, wipe the unchosen circle as soon as the player engages one, then spawn the next wave after the chosen circle resolves; keep the value tunable with a serialized `maxActiveCircles` field.
+- **What Changed:** Replaced the single active circle reference with an active encounter list, added wave spawning, prevented duplicate circle colors within the same wave, made the EXP-bar enemy transition clear every active circle, and made unchosen circles clear immediately once a circle is engaged.
+- **Next Likely Step:** Play-test whether two simultaneous circles create a fun order/risk choice, then decide whether the unchosen circle should disappear instantly, fade out, or award/deny something.
+
+### 2026-05-02 - Basic Lives And Game Over
+- **Goal:** Add a simple fail state so missed circle encounters matter.
+- **Key Decisions:** Start the player at 3 lives; decrement lives only when a chosen circle encounter actually fails, not when the unchosen choice circle is cleaned up; show game over when lives reach 0.
+- **What Changed:** Added a runtime `LivesController` that creates a top-left `Lives` counter and centered `GAME OVER` text; `ParryCircleEncounter` now reports completed versus failed resolution; `TileCircleSpawner` routes failed circle resolutions to the lives controller.
+- **Next Likely Step:** Play-test whether game over at 0 lives feels right and whether the frozen state needs restart or retry controls.
