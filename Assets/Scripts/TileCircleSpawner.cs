@@ -20,12 +20,22 @@ public class TileCircleSpawner : MonoBehaviour
         BlackOnly
     }
 
+    private enum SpawnTriggerMode
+    {
+        PlayerLandingChance,
+        TimedWaves
+    }
+
     [SerializeField] private Transform gameplayTilesRoot;
     [SerializeField] private Transform effectsRoot;
     [SerializeField] private Transform playerTransform;
     [SerializeField] private PlayerController playerController;
     [SerializeField] private ParryPointTracker parryPointTracker;
     [SerializeField] private LivesController livesController;
+    [SerializeField] private HealthPickupSpawner healthPickupSpawner;
+    [SerializeField] private DodgeMechanic dodgeMechanic;
+    [SerializeField] private SpawnTriggerMode spawnTriggerMode = SpawnTriggerMode.PlayerLandingChance;
+    [SerializeField, Range(0f, 1f)] private float circleSpawnChanceOnLanding = 0.6f;
     [SerializeField] private SpawnMode spawnMode = SpawnMode.RandomTile;
     [SerializeField] private bool avoidPlayerTile = true;
     [SerializeField, Min(1)] private int maxActiveCircles = 2;
@@ -54,6 +64,7 @@ public class TileCircleSpawner : MonoBehaviour
     private Material runtimeLineMaterial;
     private SpriteRenderer startingPlayerTile;
     private Coroutine spawnLoopCoroutine;
+    private PlayerController subscribedPlayerController;
     private bool hasStoppedSpawning;
 
     private void Start()
@@ -98,17 +109,28 @@ public class TileCircleSpawner : MonoBehaviour
             return;
         }
 
-        spawnLoopCoroutine = StartCoroutine(SpawnLoop());
+        SubscribeToPlayerLanding();
+        ResolveDodgeMechanic();
+        ResolveHealthPickupSpawner();
+
+        if (spawnTriggerMode == SpawnTriggerMode.TimedWaves)
+        {
+            spawnLoopCoroutine = StartCoroutine(SpawnLoop());
+        }
     }
 
     private void OnValidate()
     {
         maxActiveCircles = Mathf.Max(1, maxActiveCircles);
+        circleSpawnChanceOnLanding = Mathf.Clamp01(circleSpawnChanceOnLanding);
         NormalizeEncounterSettings();
     }
 
     private void OnDestroy()
     {
+        UnsubscribeFromPlayerLanding();
+        healthPickupSpawner?.ClearActivePickup();
+
         if (runtimeLineMaterial != null)
         {
             Destroy(runtimeLineMaterial);
@@ -216,8 +238,48 @@ public class TileCircleSpawner : MonoBehaviour
         return null;
     }
 
+    private void HandlePlayerLanded(Transform landedTile)
+    {
+        if (spawnTriggerMode != SpawnTriggerMode.PlayerLandingChance ||
+            hasStoppedSpawning ||
+            landedTile == null)
+        {
+            return;
+        }
+
+        ResolveLivesController();
+        if (livesController != null && livesController.IsGameOver)
+        {
+            return;
+        }
+
+        PruneInactiveEncounters();
+        if (activeEncounters.Count > 0)
+        {
+            return;
+        }
+
+        if (Random.value > circleSpawnChanceOnLanding)
+        {
+            return;
+        }
+
+        SpriteRenderer tileRenderer = landedTile.GetComponent<SpriteRenderer>();
+        if (tileRenderer == null ||
+            (parryPointTracker != null && parryPointTracker.HasActiveEncounterOnTile(landedTile)) ||
+            (healthPickupSpawner != null && healthPickupSpawner.HasActivePickupOnTile(landedTile)) ||
+            HasEnemyOnTile(landedTile))
+        {
+            return;
+        }
+
+        SpawnCircleOnTile(tileRenderer, null, true);
+    }
+
     private void ClearActiveEncounters()
     {
+        healthPickupSpawner?.ClearActivePickup();
+
         for (int i = activeEncounters.Count - 1; i >= 0; i--)
         {
             ParryCircleEncounter encounter = activeEncounters[i];
@@ -246,6 +308,7 @@ public class TileCircleSpawner : MonoBehaviour
                 continue;
             }
 
+            healthPickupSpawner?.ClearIfOnTile(encounter.TargetTile);
             Destroy(encounter.gameObject);
             activeEncounters.RemoveAt(i);
         }
@@ -270,6 +333,14 @@ public class TileCircleSpawner : MonoBehaviour
             return false;
         }
 
+        return SpawnCircleOnTile(tile, usedDifficultyLabels, false);
+    }
+
+    private bool SpawnCircleOnTile(
+        SpriteRenderer tile,
+        List<string> usedDifficultyLabels,
+        bool startIfPlayerIsOnTile)
+    {
         ParryCircleEncounter.Settings encounterSettings = ChooseEncounterSettings(usedDifficultyLabels);
         if (encounterSettings == null)
         {
@@ -294,6 +365,12 @@ public class TileCircleSpawner : MonoBehaviour
         encounter.Resolved += HandleEncounterResolved;
         activeEncounters.Add(encounter);
         usedDifficultyLabels?.Add(GetDifficultyKey(encounterSettings));
+
+        if (startIfPlayerIsOnTile)
+        {
+            encounter.StartIfPlayerIsOnTargetTile();
+        }
+
         return true;
     }
 
@@ -612,6 +689,71 @@ public class TileCircleSpawner : MonoBehaviour
 
         GameObject livesObject = new("LivesController");
         livesController = livesObject.AddComponent<LivesController>();
+    }
+
+    private void ResolveHealthPickupSpawner()
+    {
+        if (healthPickupSpawner == null)
+        {
+            healthPickupSpawner = GetComponent<HealthPickupSpawner>();
+        }
+
+        if (healthPickupSpawner == null)
+        {
+            healthPickupSpawner = gameObject.AddComponent<HealthPickupSpawner>();
+        }
+
+        healthPickupSpawner.Configure(
+            gameplayTilesRoot,
+            effectsRoot,
+            playerController,
+            parryPointTracker,
+            dodgeMechanic,
+            livesController);
+    }
+
+    private void SubscribeToPlayerLanding()
+    {
+        if (subscribedPlayerController == playerController)
+        {
+            return;
+        }
+
+        UnsubscribeFromPlayerLanding();
+
+        if (playerController == null)
+        {
+            return;
+        }
+
+        playerController.LandedOnTile += HandlePlayerLanded;
+        subscribedPlayerController = playerController;
+    }
+
+    private void UnsubscribeFromPlayerLanding()
+    {
+        if (subscribedPlayerController == null)
+        {
+            return;
+        }
+
+        subscribedPlayerController.LandedOnTile -= HandlePlayerLanded;
+        subscribedPlayerController = null;
+    }
+
+    private void ResolveDodgeMechanic()
+    {
+        if (dodgeMechanic == null)
+        {
+            dodgeMechanic = GetComponent<DodgeMechanic>();
+        }
+
+        if (dodgeMechanic == null)
+        {
+            dodgeMechanic = gameObject.AddComponent<DodgeMechanic>();
+        }
+
+        dodgeMechanic.Configure(effectsRoot, playerController, parryPointTracker, livesController);
     }
 
     private SpriteRenderer GetStartingPlayerTile()

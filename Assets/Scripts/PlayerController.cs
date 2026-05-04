@@ -25,6 +25,7 @@ public class PlayerController : MonoBehaviour
     private int controlLockCount;
     private bool normalSpriteFlipX;
 
+    public event Action<Transform, Transform, Vector2Int> StartedMoveFromTile;
     public event Action<Transform> LandedOnTile;
 
     public Transform CurrentTileTransform
@@ -257,7 +258,8 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        Vector2Int nextCell = currentCell + bufferedMove;
+        Vector2Int moveDirection = bufferedMove;
+        Vector2Int nextCell = currentCell + moveDirection;
         hasBufferedMove = false;
 
         if (!IsInsideGrid(nextCell))
@@ -265,11 +267,19 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        bool isHorizontalDash = bufferedMove.x != 0;
+        Transform startTile = CurrentTileTransform;
+        Transform targetTile = tileGrid[nextCell.x, nextCell.y];
+        bool isHorizontalDash = moveDirection.x != 0;
         if (isHorizontalDash)
         {
-            SetDashFacing(bufferedMove);
+            SetDashFacing(moveDirection);
             PlayAnimationTrigger(dashAnimationTrigger, "dash");
+        }
+
+        StartedMoveFromTile?.Invoke(startTile, targetTile, moveDirection);
+        if (Time.timeScale <= 0f)
+        {
+            return;
         }
 
         StartCoroutine(JumpToCell(nextCell, isHorizontalDash));

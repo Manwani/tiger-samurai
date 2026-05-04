@@ -442,6 +442,14 @@ public class ParryCircleEncounter : MonoBehaviour
         return TargetTile == tile;
     }
 
+    public void StartIfPlayerIsOnTargetTile()
+    {
+        if (playerController != null && playerController.CurrentTileTransform == TargetTile)
+        {
+            StartEncounter();
+        }
+    }
+
     public float GetDistanceToWindowCenter()
     {
         float windowCenter = (currentStageWindowMin + currentStageWindowMax) * 0.5f;

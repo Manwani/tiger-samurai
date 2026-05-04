@@ -18,12 +18,14 @@ public class LivesController : MonoBehaviour
     private int currentLives;
 
     public int CurrentLives => currentLives;
+    public int MaxLives => Mathf.Max(0, startingLives);
+    public bool CanRestoreLife => !IsGameOver && currentLives < MaxLives;
     public bool IsGameOver { get; private set; }
 
     private void Awake()
     {
         Time.timeScale = 1f;
-        currentLives = Mathf.Max(0, startingLives);
+        currentLives = MaxLives;
         EnsureUi();
         UpdateLivesText();
         SetGameOverVisible(false);
@@ -50,6 +52,18 @@ public class LivesController : MonoBehaviour
         {
             ShowGameOver();
         }
+    }
+
+    public bool RestoreLife(int amount = 1)
+    {
+        if (!CanRestoreLife)
+        {
+            return false;
+        }
+
+        currentLives = Mathf.Min(MaxLives, currentLives + Mathf.Max(1, amount));
+        UpdateLivesText();
+        return true;
     }
 
     private void ShowGameOver()

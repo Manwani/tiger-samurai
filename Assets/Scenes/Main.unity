@@ -147,7 +147,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 01614664b831546d2ae94a42149d80ac, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.InputSystem::UnityEngine.InputSystem.UI.InputSystemUIInputModule
   m_SendPointerHoverToParent: 1
   m_MoveRepeatDelay: 0.5
@@ -178,7 +178,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 76c392e42b5098c458856cdf6ecaaaa1, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.EventSystem
   m_FirstSelected: {fileID: 0}
   m_sendNavigationEvents: 1
@@ -771,6 +771,8 @@ GameObject:
   m_Component:
   - component: {fileID: 966958951}
   - component: {fileID: 966958952}
+  - component: {fileID: 966958954}
+  - component: {fileID: 966958953}
   m_Layer: 0
   m_Name: GameplayTiles
   m_TagString: Untagged
@@ -819,8 +821,14 @@ MonoBehaviour:
   playerTransform: {fileID: 1601537334}
   playerController: {fileID: 0}
   parryPointTracker: {fileID: 1900009126}
+  livesController: {fileID: 0}
+  healthPickupSpawner: {fileID: 0}
+  dodgeMechanic: {fileID: 0}
+  spawnTriggerMode: 0
+  circleSpawnChanceOnLanding: 0.3
   spawnMode: 0
   avoidPlayerTile: 1
+  maxActiveCircles: 2
   spawnInterval: 1
   lineWidth: 0.08
   circlePaddingPixels: 500
@@ -932,6 +940,66 @@ MonoBehaviour:
     - shrinkDuration: 0.52
       parryWindowDurationSeconds: 0.15
       expandDuration: 0.05
+--- !u!114 &966958953
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 966958950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 87a091b5c7b64e89a8f5c12ee6da74ab, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::DodgeMechanic
+  effectsRoot: {fileID: 0}
+  playerController: {fileID: 0}
+  parryPointTracker: {fileID: 0}
+  healthPickupSpawner: {fileID: 0}
+  livesController: {fileID: 0}
+  spawnOnEveryLanding: 1
+  spawnChance: 1
+  skipCircleTiles: 1
+  skipEnemyTiles: 1
+  skipHealthPickupTiles: 1
+  warningDuration: 0.35
+  collapseDuration: 0.28
+  lingerDuration: 0.08
+  lineWidth: 0.08
+  edgeInsetPercent: -0.1
+  zOffset: -0.25
+  warningColor: {r: 1, g: 0.88, b: 0.25, a: 0.95}
+  collapseColor: {r: 1, g: 0.12, b: 0.08, a: 1}
+  sortingOrder: 0
+  damage: 1
+--- !u!114 &966958954
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 966958950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9afff49ea1ce4fed8c12d5d21cbc8af5, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::HealthPickupSpawner
+  healthPickupSprite: {fileID: 295315208486085905, guid: 78a6dbf0df2cf3547a8ae08807c84b16, type: 3}
+  spawnLifeThreshold: 3
+  spawnChanceOnLanding: 0.3
+  pickupLifetimeSeconds: 5
+  tileSizeMultiplier: 0.46
+  worldOffset: {x: 0, y: 0.12, z: 0}
+  sortingOrder: 10
+  avoidCircleTiles: 1
+  avoidEnemyTiles: 1
+  avoidDodgeHazardTiles: 1
+  gameplayTilesRoot: {fileID: 0}
+  effectsRoot: {fileID: 0}
+  playerController: {fileID: 0}
+  parryPointTracker: {fileID: 0}
+  dodgeMechanic: {fileID: 0}
+  livesController: {fileID: 0}
 --- !u!1 &1036473096
 GameObject:
   m_ObjectHideFlags: 0

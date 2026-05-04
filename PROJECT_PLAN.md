@@ -2,8 +2,8 @@
 
 **Project Name:** TigerSamurai  
 **Active Branch:** `main`  
-**Last Updated:** `2026-05-02`
-**Current Focus:** Testing whether two simultaneous, different-colored parry circles plus a simple 3-life fail state gives the player a more interesting board decision, while keeping the broader white/red/blue/black difficulty ladder, clearer parry timing feedback, stricter anti-spam parry rules, streak-based parry zoom toward the player, a basic `ExpBarController` that fills and sparkles on parries, starts the enemy phase, and randomized six-input enemy defeat prompts.
+**Last Updated:** `2026-05-04`
+**Current Focus:** Testing whether movement-triggered parry circle spawns, first-pass dodge hazards, and movement-triggered safe-tile health drops make the 3x3 board feel faster and more reactive. Circles now have a 60% chance to spawn on the tile the player lands on, health pickups roll on player landings while the player has fewer than 3 lives, and the broader white/red/blue/black difficulty ladder, 3-life fail state, parry feedback, EXP bar, enemy phase, and randomized six-input enemy prompts remain in place.
 **Status:** Active prototype development
 
 ## Ongoing Instructions For Assistant
@@ -33,6 +33,10 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 
 ## Outstanding Tasks
 ### Next Session Notes
+- [ ] Prioritize damage feedback so players clearly understand when they lose health from missed parries or dodge hazard wall hits.
+- [ ] Add a dodge hazard close sound and smoke particle effect when the lines collapse.
+- [ ] Make losing health more visible with stronger feedback, such as flash, shake, hit pause, or life counter punch.
+- [ ] Polish health pickup expiration feedback so the turkey leg visibly fades, blinks, or pulses as time runs out.
 - [ ] Add smoke particle effects when the character dashes.
 - [ ] Add directional dash animations for forward and back movement.
 - [ ] Figure out the proper frames for the parry animation.
@@ -41,7 +45,9 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - [ ] When a circle parry enemy is fully defeated, spawn particles that travel to the EXP bar and increase it for a stronger reward effect.
 
 ### Current Priority
-- [ ] Play-test two simultaneous different-colored parry circles that wipe the unchosen circle as soon as the player engages a circle, then decide whether this should stay as the main board-choice rhythm.
+- [ ] Play-test the new movement-triggered circle rhythm: every landing rolls a 60% chance to spawn one circle on the landed tile, using the existing white/red/blue/black rules.
+- [ ] Play-test the first-pass dodge hazard mechanic: hazards should spawn after landing on non-circle tiles, randomly choose horizontal or vertical lines, damage the player for standing still until collapse, and damage movement through the unsafe line direction.
+- [ ] Play-test movement-triggered turkey-leg health drops: while below 3 lives, each landing should roll a 10% chance, place at most one pickup on another random safe empty tile, restore 1 life on collection, and disappear after a short lifetime.
 - [ ] Play-test the new lives counter and confirm whether game over at 0 lives feels fair.
 - [ ] Play-test the first-pass white/red parry encounter flow and tune whether red circles feel fair.
 - [x] Bring `TileCircleSpawner` out of debug mode so circles spawn in the intended gameplay flow instead of always using the starting player tile.
@@ -52,12 +58,22 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - [ ] Play-test whether six randomized enemy inputs feels readable and fair after the EXP bar fills.
 
 ### Near-Term Cleanup
+- [ ] If the movement-triggered circle spawn rhythm stays, simplify `TileCircleSpawner` around that loop by removing or archiving the old timed two-circle wave mode, replacing the active encounter list with one active circle, and keeping health pickups disconnected until they are redesigned.
+- [ ] Clean up Inspector ergonomics for `TileCircleSpawner`, `HealthPickupSpawner`, and `DodgeMechanic` so dependency reference fields do not feel redundant when all components live on `GameplayTiles`.
 - [ ] Confirm whether the test `ParryBurst` scene object should stay in `Main.unity` or be removed now that the prefab is spawned by code.
 - [ ] Decide how to show remaining parries on multi-hit circles so red encounters read clearly at a glance.
 - [ ] Replace the temporary `P` prompt above the player with final parry-ready art or UI.
 - [ ] Decide when circle spawning should resume after the EXP-spawned enemy encounter ends.
 - [ ] Keep this file updated at the end of meaningful work sessions.
 - [ ] Re-check the enemy encounter flow after current combat polish and decide the next improvement.
+
+### Future Architecture Ideas
+- [ ] Consider moving future enemy/encounter setup toward a simple recipe-and-spawner model:
+  - **Encounter definitions are recipes:** what type it is, what it looks like, how hard it is, and what reward it gives.
+  - **Spawners place recipes onto the board:** pick a tile, create the object, and hand it the needed references.
+  - **Behavior scripts play the actual rules:** circle parry, triangle hold-parry, enemy input sequence, boss pattern, etc.
+- [ ] Avoid making one giant `EnemyConstructor` that knows every enemy rule. If a new enemy type plays differently, give it its own focused behavior script.
+- [ ] When circle, triangle, enemy, and boss patterns start sharing spawn needs, consider a more general `EncounterSpawner` or `BoardEncounterSpawner`.
 
 ## Session Log
 ### 2026-04-17 - Repo State Recovery And Tracker Setup
@@ -131,3 +147,51 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - **Key Decisions:** Start the player at 3 lives; decrement lives only when a chosen circle encounter actually fails, not when the unchosen choice circle is cleaned up; show game over when lives reach 0.
 - **What Changed:** Added a runtime `LivesController` that creates a top-left `Lives` counter and centered `GAME OVER` text; `ParryCircleEncounter` now reports completed versus failed resolution; `TileCircleSpawner` routes failed circle resolutions to the lives controller.
 - **Next Likely Step:** Play-test whether game over at 0 lives feels right and whether the frozen state needs restart or retry controls.
+
+### 2026-05-03 - Turkey Leg Health Pickup
+- **Goal:** Make the new turkey leg item restore one life and fold it into the two-circle board-choice experiment.
+- **Key Decisions:** Spawn at most one turkey leg per circle wave; only spawn it when the player has fewer than 3 lives and can actually heal; place it on one of the active circle tiles so choosing that tile can recover health; clear the pickup with the wave or if its circle is the unchosen one.
+- **What Changed:** Added `HealthPickup.cs`; added `RestoreLife`, `MaxLives`, and `CanRestoreLife` to `LivesController`; updated `TileCircleSpawner` to auto-use `Assets/Art/Items/turkeyLeg.png`, scale and center the sprite on a circle tile, and wire collection through player tile landings.
+- **Next Likely Step:** Play-test the heal timing and visual size, then decide whether the turkey leg should always appear below 3 lives or use a spawn chance once the loop feels readable.
+
+### 2026-05-03 - Health Pickup Spawner Split
+- **Goal:** Keep `TileCircleSpawner` from taking on too many unrelated responsibilities as powerups are added.
+- **Key Decisions:** Keep `TileCircleSpawner` as the circle-wave orchestrator; move turkey-leg sprite loading, pickup placement, visual sizing, life-threshold checks, and pickup cleanup into a dedicated `HealthPickupSpawner`.
+- **What Changed:** Added `HealthPickupSpawner.cs`; trimmed pickup-specific fields and helper methods out of `TileCircleSpawner`; kept the same gameplay behavior through small calls such as `TrySpawnForWave`, `ClearActivePickup`, and `ClearIfOnTile`.
+- **Next Likely Step:** If the health pickup becomes permanent, consider converting the generated turkey-leg visual into a prefab assigned on `HealthPickupSpawner`.
+
+### 2026-05-03 - Class Diagram Documentation
+- **Goal:** Make script relationships easier to see for planning future systems.
+- **Key Decisions:** Use a repo-tracked `CLASS_DIAGRAM.md` with Mermaid diagrams so the architecture can be viewed in Markdown-friendly tools and updated over time.
+- **What Changed:** Added a class relationship diagram, a runtime flow chart, responsibility boundaries, and planning notes for likely next refactors such as encounter variants, powerup spawners, and ScriptableObject circle settings.
+- **Next Likely Step:** Keep the diagram updated when new gameplay scripts or major responsibilities are added.
+
+### 2026-05-03 - Future Encounter Architecture Note
+- **Goal:** Capture the idea of building future enemies and board challenges from reusable setup data without creating another oversized manager script.
+- **Key Decisions:** Think in three simple pieces: recipe data defines what the encounter is, a spawner places it, and a focused behavior script runs its rules.
+- **What Changed:** Added a `Future Architecture Ideas` section with plain-language notes about encounter definitions, spawners, and separate behavior scripts for circles, triangles, bosses, and enemy input patterns.
+- **Next Likely Step:** Revisit this once triangle hold-parry or boss encounters are ready to build.
+
+### 2026-05-04 - First Pass Dodge Hazard Mechanic
+- **Goal:** Add fast movement pressure so empty board tiles create decisions too, not just circle tiles.
+- **Key Decisions:** Keep the mechanic split into a small `DodgeMechanic` manager and a focused `DodgeHazard` behavior; spawn a hazard immediately when the player lands on a non-circle tile; randomly choose horizontal or vertical line pairs; deal 1 life of damage if the player stays until the lines collapse or moves through the unsafe axis.
+- **What Changed:** Added `DodgeMechanic.cs` and `DodgeHazard.cs`; added a `StartedMoveFromTile` event to `PlayerController`; wired `TileCircleSpawner` to auto-create/configure the dodge mechanic alongside lives, circle, and pickup references.
+- **Next Likely Step:** Play-test the default warning/collapse timing values, then tune `warningDuration`, `collapseDuration`, `lineWidth`, colors, and whether every landing should always spawn a hazard.
+
+### 2026-05-04 - Movement-Triggered Circle Spawn Experiment
+- **Goal:** Make parry circles feel like part of the fast movement rhythm instead of a separate two-choice wave system.
+- **Key Decisions:** Roll for a circle every time the player lands on a tile; use a 60% spawn chance for the current test pass; spawn the circle on the landed tile and immediately start its existing white/red/blue/black encounter behavior; keep only one active circle at a time for the first pass.
+- **What Changed:** Added a `PlayerLandingChance` trigger mode to `TileCircleSpawner`, added a tuneable `circleSpawnChanceOnLanding`, and made landed-tile circles start immediately through `ParryCircleEncounter.StartIfPlayerIsOnTargetTile`.
+- **Next Likely Step:** Play-test whether 60% gives enough parry action without crowding out dodge hazards, then decide whether dodge hazards should still spawn on failed circle-roll landings.
+
+### 2026-05-04 - Movement-Triggered Safe-Tile Health Drops
+- **Goal:** Reintroduce health recovery in a way that supports the faster movement loop.
+- **Key Decisions:** Only roll health drops when the player has fewer than 3 lives; trigger the roll on player landings so waiting cannot be abused; use a 10% chance per landing; keep only one active pickup; spawn on another random safe empty tile; make pickups expire after a short lifetime.
+- **What Changed:** Reworked `HealthPickupSpawner` into a movement-triggered safe-tile spawner, added `pickupLifetimeSeconds` to `HealthPickup`, made `DodgeMechanic` and `TileCircleSpawner` skip active pickup tiles, and kept turkey legs restoring 1 life on landing collection.
+- **Next Likely Step:** Play-test `spawnChanceOnLanding` and `pickupLifetimeSeconds` to decide whether the pickup feels helpful without rewarding stalling.
+
+### 2026-05-04 - Health Drop Spawn Toggle Fix
+- **Goal:** Fix health pickups not appearing during testing.
+- **Key Decisions:** Let the `HealthPickupSpawner` component itself control whether health drops run instead of adding a second enable/disable toggle on `TileCircleSpawner`.
+- **What Changed:** Removed the redundant `healthPickupSpawningEnabled` gate from `TileCircleSpawner`; this prevents old scene-serialized values from disabling the tuned `HealthPickupSpawner` component at runtime.
+- **Next Likely Step:** Re-test below 3 lives with a high `spawnChanceOnLanding` to confirm pickups appear on safe empty tiles, then return it to the intended 10% value.
