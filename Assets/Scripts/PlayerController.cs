@@ -15,6 +15,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private SpriteRenderer playerSpriteRenderer;
     [SerializeField] private string parryAnimationTrigger = "Parry";
     [SerializeField] private string dashAnimationTrigger = "Dash";
+    [SerializeField, Min(0f)] private float hazardKnockbackDistance = 0.28f;
+    [SerializeField, Min(0.01f)] private float hazardKnockbackOutDuration = 0.045f;
+    [SerializeField, Min(0.01f)] private float hazardKnockbackReturnDuration = 0.1f;
 
     private Vector2Int currentCell;
     private bool isMoving;
@@ -24,6 +27,8 @@ public class PlayerController : MonoBehaviour
     private Vector2Int bufferedMove;
     private int controlLockCount;
     private bool normalSpriteFlipX;
+    private bool moveCancelRequested;
+    private Coroutine hazardKnockbackCoroutine;
 
     public event Action<Transform, Transform, Vector2Int> StartedMoveFromTile;
     public event Action<Transform> LandedOnTile;
@@ -96,6 +101,13 @@ public class PlayerController : MonoBehaviour
         }
 
         TryStartBufferedMove();
+    }
+
+    private void OnValidate()
+    {
+        hazardKnockbackDistance = Mathf.Max(0f, hazardKnockbackDistance);
+        hazardKnockbackOutDuration = Mathf.Max(0.01f, hazardKnockbackOutDuration);
+        hazardKnockbackReturnDuration = Mathf.Max(0.01f, hazardKnockbackReturnDuration);
     }
 
     private void BufferMoveInputs()
@@ -269,17 +281,19 @@ public class PlayerController : MonoBehaviour
 
         Transform startTile = CurrentTileTransform;
         Transform targetTile = tileGrid[nextCell.x, nextCell.y];
+        moveCancelRequested = false;
+        StartedMoveFromTile?.Invoke(startTile, targetTile, moveDirection);
+        if (moveCancelRequested || Time.timeScale <= 0f)
+        {
+            moveCancelRequested = false;
+            return;
+        }
+
         bool isHorizontalDash = moveDirection.x != 0;
         if (isHorizontalDash)
         {
             SetDashFacing(moveDirection);
             PlayAnimationTrigger(dashAnimationTrigger, "dash");
-        }
-
-        StartedMoveFromTile?.Invoke(startTile, targetTile, moveDirection);
-        if (Time.timeScale <= 0f)
-        {
-            return;
         }
 
         StartCoroutine(JumpToCell(nextCell, isHorizontalDash));
@@ -324,6 +338,67 @@ public class PlayerController : MonoBehaviour
         }
 
         controlLockCount = Mathf.Max(0, controlLockCount - 1);
+    }
+
+    public void CancelPendingMove()
+    {
+        moveCancelRequested = true;
+        hasBufferedMove = false;
+        bufferedMove = Vector2Int.zero;
+    }
+
+    public void PlayHazardKnockback(Vector2Int moveDirection)
+    {
+        if (moveDirection == Vector2Int.zero)
+        {
+            return;
+        }
+
+        if (hazardKnockbackCoroutine != null)
+        {
+            StopCoroutine(hazardKnockbackCoroutine);
+            hazardKnockbackCoroutine = null;
+        }
+
+        hazardKnockbackCoroutine = StartCoroutine(HazardKnockbackRoutine(moveDirection));
+    }
+
+    private IEnumerator HazardKnockbackRoutine(Vector2Int moveDirection)
+    {
+        isMoving = true;
+        hasBufferedMove = false;
+        bufferedMove = Vector2Int.zero;
+
+        Vector3 startPosition = CellToWorld(currentCell);
+        Vector3 direction = new(moveDirection.x, moveDirection.y, 0f);
+        Vector3 impactPosition = startPosition + direction.normalized * hazardKnockbackDistance;
+        impactPosition.z = baseZ;
+
+        yield return MoveBetweenPositions(startPosition, impactPosition, hazardKnockbackOutDuration);
+        yield return MoveBetweenPositions(impactPosition, startPosition, hazardKnockbackReturnDuration);
+
+        transform.position = startPosition;
+        isMoving = false;
+        hasBufferedMove = false;
+        bufferedMove = Vector2Int.zero;
+        hazardKnockbackCoroutine = null;
+    }
+
+    private IEnumerator MoveBetweenPositions(Vector3 from, Vector3 to, float duration)
+    {
+        float elapsed = 0f;
+        float safeDuration = Mathf.Max(0.01f, duration);
+
+        while (elapsed < safeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / safeDuration);
+            float easedT = Mathf.SmoothStep(0f, 1f, t);
+            transform.position = Vector3.Lerp(from, to, easedT);
+            yield return null;
+        }
+
+        transform.position = to;
     }
 
     private bool TryBuildTileGrid()

@@ -394,6 +394,7 @@ public class ParryCircleEncounter : MonoBehaviour
         }
 
         playerController.LandedOnTile += HandlePlayerLanded;
+        playerController.StartedMoveFromTile += HandlePlayerStartedMove;
         parryPointTracker.RegisterCircle(this);
 
         PrepareStage(0);
@@ -426,6 +427,7 @@ public class ParryCircleEncounter : MonoBehaviour
         if (playerController != null)
         {
             playerController.LandedOnTile -= HandlePlayerLanded;
+            playerController.StartedMoveFromTile -= HandlePlayerStartedMove;
         }
 
         if (controlsLockedByEncounter && playerController != null)
@@ -512,6 +514,22 @@ public class ParryCircleEncounter : MonoBehaviour
         }
 
         StartEncounter();
+    }
+
+    private void HandlePlayerStartedMove(Transform fromTile, Transform toTile, Vector2Int moveDirection)
+    {
+        _ = toTile;
+        _ = moveDirection;
+
+        if (hasBeenResolved ||
+            settings == null ||
+            settings.LockPlayerOnTile ||
+            fromTile != TargetTile)
+        {
+            return;
+        }
+
+        CancelEncounterWithoutDamage();
     }
 
     private void StartEncounter()
@@ -617,6 +635,17 @@ public class ParryCircleEncounter : MonoBehaviour
     private void FailEncounter()
     {
         ResolveEncounter(false);
+    }
+
+    private void CancelEncounterWithoutDamage()
+    {
+        if (hasBeenResolved)
+        {
+            return;
+        }
+
+        hasBeenResolved = true;
+        Destroy(gameObject);
     }
 
     private void ResolveEncounter(bool completed)

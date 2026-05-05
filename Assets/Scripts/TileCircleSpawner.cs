@@ -34,6 +34,7 @@ public class TileCircleSpawner : MonoBehaviour
     [SerializeField] private LivesController livesController;
     [SerializeField] private HealthPickupSpawner healthPickupSpawner;
     [SerializeField] private DodgeMechanic dodgeMechanic;
+    [SerializeField] private bool circleSpawningEnabled;
     [SerializeField] private SpawnTriggerMode spawnTriggerMode = SpawnTriggerMode.PlayerLandingChance;
     [SerializeField, Range(0f, 1f)] private float circleSpawnChanceOnLanding = 0.6f;
     [SerializeField] private SpawnMode spawnMode = SpawnMode.RandomTile;
@@ -113,7 +114,7 @@ public class TileCircleSpawner : MonoBehaviour
         ResolveDodgeMechanic();
         ResolveHealthPickupSpawner();
 
-        if (spawnTriggerMode == SpawnTriggerMode.TimedWaves)
+        if (circleSpawningEnabled && spawnTriggerMode == SpawnTriggerMode.TimedWaves)
         {
             spawnLoopCoroutine = StartCoroutine(SpawnLoop());
         }
@@ -207,6 +208,11 @@ public class TileCircleSpawner : MonoBehaviour
 
     private int SpawnCircleWave()
     {
+        if (!circleSpawningEnabled)
+        {
+            return 0;
+        }
+
         int circlesToSpawn = Mathf.Max(1, maxActiveCircles);
         int spawnedCount = 0;
         waveDifficultyLabels.Clear();
@@ -240,7 +246,8 @@ public class TileCircleSpawner : MonoBehaviour
 
     private void HandlePlayerLanded(Transform landedTile)
     {
-        if (spawnTriggerMode != SpawnTriggerMode.PlayerLandingChance ||
+        if (!circleSpawningEnabled ||
+            spawnTriggerMode != SpawnTriggerMode.PlayerLandingChance ||
             hasStoppedSpawning ||
             landedTile == null)
         {
@@ -341,6 +348,11 @@ public class TileCircleSpawner : MonoBehaviour
         List<string> usedDifficultyLabels,
         bool startIfPlayerIsOnTile)
     {
+        if (!circleSpawningEnabled)
+        {
+            return false;
+        }
+
         ParryCircleEncounter.Settings encounterSettings = ChooseEncounterSettings(usedDifficultyLabels);
         if (encounterSettings == null)
         {
@@ -387,7 +399,14 @@ public class TileCircleSpawner : MonoBehaviour
         }
 
         ResolveLivesController();
-        livesController?.LoseLife();
+        string difficultyLabel = encounter != null && !string.IsNullOrWhiteSpace(encounter.DifficultyLabel)
+            ? encounter.DifficultyLabel
+            : "unknown";
+        string tileName = encounter != null && encounter.TargetTile != null
+            ? encounter.TargetTile.name
+            : "unknown tile";
+
+        livesController?.LoseLife($"failed {difficultyLabel} parry circle on {tileName}");
     }
 
     private bool UsesStartingPlayerTile()

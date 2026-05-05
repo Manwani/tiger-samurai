@@ -2,8 +2,8 @@
 
 **Project Name:** TigerSamurai  
 **Active Branch:** `main`  
-**Last Updated:** `2026-05-04`
-**Current Focus:** Testing whether movement-triggered parry circle spawns, first-pass dodge hazards, and movement-triggered safe-tile health drops make the 3x3 board feel faster and more reactive. Circles now have a 60% chance to spawn on the tile the player lands on, health pickups roll on player landings while the player has fewer than 3 lives, and the broader white/red/blue/black difficulty ladder, 3-life fail state, parry feedback, EXP bar, enemy phase, and randomized six-input enemy prompts remain in place.
+**Last Updated:** `2026-05-05`
+**Current Focus:** Testing the first-pass dodge hazard and knockback flow with circle spawning temporarily disabled. Unsafe dodge-hazard movement now cancels the attempted jump and plays a short blocked-move knockback instead of letting the player escape through the damaging line, optional non-locking white circles clear when the player moves away, life loss logs its damage source for debugging, health pickups roll on player landings while the player has fewer than 3 lives, and the broader white/red/blue/black difficulty ladder, 3-life fail state, parry feedback, EXP bar, enemy phase, and randomized six-input enemy prompts remain in place for when circles are re-enabled.
 **Status:** Active prototype development
 
 ## Ongoing Instructions For Assistant
@@ -35,7 +35,7 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 ### Next Session Notes
 - [ ] Prioritize damage feedback so players clearly understand when they lose health from missed parries or dodge hazard wall hits.
 - [ ] Add a dodge hazard close sound and smoke particle effect when the lines collapse.
-- [ ] Make losing health more visible with stronger feedback, such as flash, shake, hit pause, or life counter punch.
+- [x] Make losing health more visible with stronger feedback, such as flash, shake, hit pause, or life counter punch.
 - [ ] Polish health pickup expiration feedback so the turkey leg visibly fades, blinks, or pulses as time runs out.
 - [ ] Add smoke particle effects when the character dashes.
 - [ ] Add directional dash animations for forward and back movement.
@@ -46,6 +46,7 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 
 ### Current Priority
 - [ ] Play-test the new movement-triggered circle rhythm: every landing rolls a 60% chance to spawn one circle on the landed tile, using the existing white/red/blue/black rules.
+- [ ] Re-enable `circleSpawningEnabled` on `TileCircleSpawner` after dodge-hazard testing.
 - [ ] Play-test the first-pass dodge hazard mechanic: hazards should spawn after landing on non-circle tiles, randomly choose horizontal or vertical lines, damage the player for standing still until collapse, and damage movement through the unsafe line direction.
 - [ ] Play-test movement-triggered turkey-leg health drops: while below 3 lives, each landing should roll a 10% chance, place at most one pickup on another random safe empty tile, restore 1 life on collection, and disappear after a short lifetime.
 - [ ] Play-test the new lives counter and confirm whether game over at 0 lives feels fair.
@@ -195,3 +196,51 @@ TigerSamurai is a learn-as-we-build Unity prototype focused on clear, readable s
 - **Key Decisions:** Let the `HealthPickupSpawner` component itself control whether health drops run instead of adding a second enable/disable toggle on `TileCircleSpawner`.
 - **What Changed:** Removed the redundant `healthPickupSpawningEnabled` gate from `TileCircleSpawner`; this prevents old scene-serialized values from disabling the tuned `HealthPickupSpawner` component at runtime.
 - **Next Likely Step:** Re-test below 3 lives with a high `spawnChanceOnLanding` to confirm pickups appear on safe empty tiles, then return it to the intended 10% value.
+
+### 2026-05-05 - Player Damage Flash
+- **Goal:** Make health loss more readable when missed parries or dodge hazards damage the player.
+- **Key Decisions:** Keep the effect in a dedicated `PlayerDamageFeedback` component on the player root, with the script auto-finding the child sprite so `PlayerVisual` can stay purely visual.
+- **What Changed:** Added `PlayerDamageFeedback.cs` with a short real-time red flash and updated `LivesController.LoseLife()` to trigger it for every damage source.
+- **Next Likely Step:** Play-test whether the flash color, count, and timing are readable without feeling too harsh; consider adding life-counter punch or hit pause if damage still feels quiet.
+
+### 2026-05-05 - Dodge Hazard Move Cancel
+- **Goal:** Make unsafe dodge-hazard movement stop the player's attempted jump instead of damaging them while still allowing movement.
+- **Key Decisions:** Let `PlayerController` expose a small `CancelPendingMove()` hook during its move-start event rather than having `DodgeHazard` directly manipulate player position.
+- **What Changed:** `DodgeHazard` now cancels the pending move before dealing damage when the player tries to move through the unsafe axis, and `PlayerController` checks that cancel request before starting dash visuals or the jump coroutine.
+- **Next Likely Step:** Play-test whether cancelled hazard hits feel responsive enough or need a small recoil/shake to show why movement stopped.
+
+### 2026-05-05 - Play Again Game Over Button
+- **Goal:** Let the player restart quickly after reaching 0 lives.
+- **Key Decisions:** Keep the restart button inside `LivesController`'s existing runtime `LivesCanvas` so the whole game-over flow stays in one place.
+- **What Changed:** Added a hidden `PLAY AGAIN` UI button that appears with `GAME OVER`, restores `Time.timeScale` to 1, and reloads the active scene. Pressing space during game over now triggers the same restart path.
+- **Next Likely Step:** Play-test the game-over screen with the Input System EventSystem and decide whether the button needs stronger visual styling or controller focus.
+
+### 2026-05-05 - Damage Source Logging
+- **Goal:** Make intermittent mystery hits easier to identify during high-life testing.
+- **Key Decisions:** Add optional logging to `LivesController.LoseLife()` and pass plain-English reasons from dodge hazards and failed parry circles.
+- **What Changed:** Dodge hazards now log whether damage came from unsafe movement or standing through collapse, while failed parry circles log their difficulty and tile.
+- **Next Likely Step:** Reproduce the mystery hit and use the Console message to decide whether it is a dodge-hazard timing issue or a circle failure that happens after the player has moved.
+
+### 2026-05-05 - White Circle Move-Away Cancel
+- **Goal:** Prevent optional white circles from feeling like lingering damage threats after the player has already moved away.
+- **Key Decisions:** Treat non-locking circle encounters as optional and cancel them without life loss when the player starts moving away from their tile.
+- **What Changed:** `ParryCircleEncounter` now listens for `StartedMoveFromTile` and destroys non-locking encounters immediately when the player leaves the target tile, without firing the failure resolution.
+- **Next Likely Step:** Play-test whether this removes the confusing lingering white-circle animation and whether any move-away visual fade is needed later.
+
+### 2026-05-05 - Dodge Hazard Knockback
+- **Goal:** Make unsafe dodge-hazard movement feel like the player collided with the hazard instead of simply losing a life.
+- **Key Decisions:** Keep the board state unchanged and add a short visual nudge/recoil on `PlayerController` after `DodgeHazard` cancels the pending move.
+- **What Changed:** Added tuneable hazard knockback distance/timing fields and a real-time knockback coroutine to `PlayerController`; unsafe dodge hazard moves now trigger that feedback before dealing damage.
+- **Next Likely Step:** Play-test whether the nudge distance and return duration feel punchy enough or need a stronger recoil/shake pairing.
+
+### 2026-05-05 - Temporary Circle Spawn Disable
+- **Goal:** Isolate dodge-hazard and knockback testing without parry circles interrupting the board rhythm.
+- **Key Decisions:** Add a dedicated `circleSpawningEnabled` toggle to `TileCircleSpawner` instead of disabling the component, because the same component still wires dodge hazards and health pickups.
+- **What Changed:** Circle spawning is now gated off by default for both player-landing chance spawns and timed wave spawns.
+- **Next Likely Step:** Re-enable the toggle once dodge-hazard behavior has been tested thoroughly.
+
+### 2026-05-05 - End-Of-Day Checkpoint
+- **Goal:** Stop at a stable testing checkpoint after the knockback pass.
+- **Key Decisions:** Leave circle spawning disabled for the next test session so dodge hazards can be tested in isolation.
+- **What Changed:** Updated the plan and class diagram to reflect the current test mode before pushing the work.
+- **Next Likely Step:** Tomorrow, play-test dodge hazard damage, move cancel, knockback feel, damage flash, and the high-life debug setup before re-enabling circles.

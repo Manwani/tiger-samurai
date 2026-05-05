@@ -128,7 +128,9 @@ public class DodgeHazard : MonoBehaviour
 
         if (IsUnsafeMoveDirection(moveDirection))
         {
-            DealDamage();
+            playerController.CancelPendingMove();
+            playerController.PlayHazardKnockback(moveDirection);
+            DealDamage($"dodge hazard unsafe {lineDirection} move from {GetTileName(targetTile)}");
             Destroy(gameObject);
             return;
         }
@@ -152,11 +154,11 @@ public class DodgeHazard : MonoBehaviour
 
         if (playerController.CurrentTileTransform == targetTile)
         {
-            DealDamage();
+            DealDamage($"dodge hazard collapse on {GetTileName(targetTile)}");
         }
     }
 
-    private void DealDamage()
+    private void DealDamage(string damageReason)
     {
         if (hasDealtDamage)
         {
@@ -171,8 +173,13 @@ public class DodgeHazard : MonoBehaviour
 
         for (int i = 0; i < damage; i++)
         {
-            livesController?.LoseLife();
+            livesController?.LoseLife(damageReason);
         }
+    }
+
+    private static string GetTileName(Transform tile)
+    {
+        return tile != null ? tile.name : "unknown tile";
     }
 
     private void BuildLines()

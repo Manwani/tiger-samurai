@@ -1,6 +1,6 @@
 # TigerSamurai Class Diagram
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 This diagram covers the gameplay scripts in `Assets/Scripts`. It focuses on project-script relationships, not every Unity engine type each script touches.
 
@@ -16,9 +16,12 @@ classDiagram
         +Transform CurrentTileTransform
         +bool AreControlsLocked
         +SetControlsLocked(bool)
+        +CancelPendingMove()
+        +PlayHazardKnockback(Vector2Int)
     }
 
     class TileCircleSpawner {
+        -bool circleSpawningEnabled
         -List~ParryCircleEncounter~ activeEncounters
         -HealthPickupSpawner healthPickupSpawner
         -DodgeMechanic dodgeMechanic
@@ -42,6 +45,7 @@ classDiagram
         +HandleMissedParryAttempt()
         +StartIfPlayerIsOnTargetTile()
         +IsOnTile(Transform)
+        -HandlePlayerStartedMove(Transform,Transform,Vector2Int)
     }
 
     class ParryCircleSettings {
@@ -115,8 +119,13 @@ classDiagram
         +int MaxLives
         +bool CanRestoreLife
         +bool IsGameOver
-        +LoseLife()
+        +LoseLife(string)
         +RestoreLife(int)
+        -RestartGame()
+    }
+
+    class PlayerDamageFeedback {
+        +PlayDamageFlash()
     }
 
     class HealthPickupSpawner {
@@ -156,11 +165,11 @@ classDiagram
     TileCircleSpawner --> LivesController : loses life on failed circle
     TileCircleSpawner --> HealthPickupSpawner : configures pickup spawner
     TileCircleSpawner --> DodgeMechanic : configures dodge pressure layer
-    TileCircleSpawner ..> ParryCircleEncounter : creates landed-tile circles
+    TileCircleSpawner ..> ParryCircleEncounter : creates circles when enabled
     TileCircleSpawner ..> ParryCircleSettings : chooses difficulty
     TileCircleSpawner ..> EnemyEncounter : avoids enemy-occupied tiles
 
-    ParryCircleEncounter --> PlayerController : listens for landing and locks controls
+    ParryCircleEncounter --> PlayerController : listens for landing, move-away cancel, and locks controls
     ParryCircleEncounter --> ParryPointTracker : registers/unregisters itself
     ParryCircleEncounter *-- ParryCircleSettings : uses copied settings
     ParryCircleSettings *-- StageProfile : contains stage profiles
@@ -197,8 +206,10 @@ classDiagram
     DodgeMechanic --> LivesController : passes damage target
     DodgeMechanic ..> DodgeHazard : creates line hazards
 
-    DodgeHazard --> PlayerController : listens for movement start
+    DodgeHazard --> PlayerController : listens for movement start, cancels unsafe moves, and triggers knockback
     DodgeHazard --> LivesController : deals 1 life damage
+
+    LivesController --> PlayerDamageFeedback : flashes player on damage
 
     PlayerController ..> ParryCircleEncounter : LandedOnTile event
     PlayerController ..> TileCircleSpawner : LandedOnTile event
@@ -214,7 +225,9 @@ flowchart TD
     Start([Scene starts]) --> Player[PlayerController builds 3x3 tile grid]
     Start --> CircleSpawner[TileCircleSpawner resolves player, parry tracker, lives, pickup spawner, dodge mechanic]
     Start --> HealthLoop[HealthPickupSpawner listens for player landings]
-    CircleSpawner --> WaitMove[Wait for player movement]
+    CircleSpawner --> CirclesEnabled{Circle spawning enabled?}
+    CirclesEnabled -->|no, testing| WaitMove[Wait for player movement]
+    CirclesEnabled -->|yes| WaitMove
     HealthLoop --> LowHealth{Lives below 3 and no active pickup?}
     LowHealth -->|yes, 10 percent landing roll| HealthDrop[Turkey leg spawns on another random safe empty tile]
     LowHealth -->|no| HealthLoop
@@ -224,7 +237,9 @@ flowchart TD
     RestoreLife --> HealthLoop
     Expire --> HealthLoop
     WaitMove --> LandTile[Player lands on a tile]
-    LandTile --> CircleRoll{20 percent circle roll succeeds?}
+    LandTile --> CircleEnabled{Circle spawning enabled?}
+    CircleEnabled -->|no| DodgeAllowed{Tile has no circle or enemy?}
+    CircleEnabled -->|yes| CircleRoll{60 percent circle roll succeeds?}
     CircleRoll -->|yes| SpawnCircle[TileCircleSpawner spawns one circle on landed tile]
     CircleRoll -->|no| DodgeAllowed{Tile has no circle or enemy?}
     SpawnCircle --> Engage[ParryCircleEncounter starts immediately and may lock movement]
@@ -239,7 +254,8 @@ flowchart TD
     Complete -->|no| WaitMove
     Complete -->|yes| EnemyPhase[ExpBarController stops circles and asks EnemySpawner to spawn enemy]
     LoseLife --> GameOver{Lives at 0?}
-    GameOver -->|yes| Stop[Game over UI and time scale 0]
+    GameOver -->|yes| Stop[Game over UI, play-again button, space restart, and time scale 0]
+    Stop -->|Play Again or Space| Start
     GameOver -->|no| WaitMove
     EnemyPhase --> EnemyTile[Player lands on enemy tile]
     EnemyTile --> EnemyInput[EnemyEncounter locks movement and reads arrow sequence]
@@ -248,15 +264,16 @@ flowchart TD
 
 ## Main Responsibility Boundaries
 
-- `PlayerController` owns grid movement, movement buffering, dash/parry animation triggers, and the `LandedOnTile` event.
-- `TileCircleSpawner` owns movement-triggered circle rolls, landed-tile circle spawning, difficulty selection, and stopping active circles for the enemy phase.
-- `ParryCircleEncounter` owns one circle's timing state, stage progression, failure/completion, and movement lock for that encounter.
+- `PlayerController` owns grid movement, movement buffering, dash/parry animation triggers, hazard knockback feedback, and the `LandedOnTile` event.
+- `TileCircleSpawner` owns the temporary circle-spawning enable gate, movement-triggered circle rolls, landed-tile circle spawning, difficulty selection, and stopping active circles for the enemy phase.
+- `ParryCircleEncounter` owns one circle's timing state, stage progression, failure/completion, optional move-away cancel, and movement lock for that encounter.
 - `ParryPointTracker` owns parry input, active circle lookup, parry success feedback, parry points, and EXP gain.
 - `ExpBarController` owns EXP UI animation and the current full-bar transition into the enemy phase.
 - `EnemySpawner`, `EnemyEncounter`, and `EnemySequencePopup` own the enemy phase: spawn, input sequence, and prompt display.
-- `LivesController` owns life count, healing, and game-over UI/time freeze.
+- `LivesController` owns life count, healing, damage-source logging, game-over UI/time freeze, and the play-again scene reload button/space restart.
+- `PlayerDamageFeedback` owns the player sprite damage flash that plays when `LivesController.LoseLife()` succeeds.
 - `HealthPickupSpawner` owns landing-triggered turkey-leg spawn rolls, safe random tile selection, pickup lifetime, and cleanup; `HealthPickup` owns collection and restoring one life.
-- `DodgeMechanic` owns when dodge hazards spawn and which tiles are skipped; `DodgeHazard` owns line visuals, collapse timing, unsafe movement checks, and damage.
+- `DodgeMechanic` owns when dodge hazards spawn and which tiles are skipped; `DodgeHazard` owns line visuals, collapse timing, safe escape tracking, unsafe movement checks, and damage.
 - `ShrinkingCircle` is a simpler legacy circle behavior. The current main parry flow uses `ParryCircleEncounter`.
 
 ## Feature Planning Notes
@@ -264,7 +281,7 @@ flowchart TD
 - New circle colors or patterns can currently be added through `ParryCircleEncounter.Settings`, then surfaced through `TileCircleSpawner` selection logic.
 - A triangle hold-parry enemy should probably be a new encounter type, not more code inside `TileCircleSpawner`. A future `EncounterSpawner` or `BoardEncounterSpawner` could choose between circle, triangle, and other encounter prefabs.
 - More powerups should follow the turkey-leg split: one small pickup behavior plus a dedicated spawner/manager, with `TileCircleSpawner` only coordinating board timing if needed.
-- The old timed two-circle wave code still exists as a `TileCircleSpawner` mode, but the current prototype path is the 20% player-landing spawn roll.
+- The old timed two-circle wave code still exists as a `TileCircleSpawner` mode, but the current prototype path is the 60% player-landing spawn roll once `circleSpawningEnabled` is re-enabled.
 - The dodge hazard should stay tuneable through `DodgeMechanic` until its pacing is proven. Likely knobs are warning duration, collapse duration, spawn chance, and whether enemy tiles should stay skipped.
 - If circle difficulty keeps growing, `ParryCircleEncounter.Settings` is a strong candidate to become ScriptableObject data. That would shrink `TileCircleSpawner` and make difficulty tuning more Inspector-friendly.
 - Enemy variants should likely split from `EnemyEncounter` once their input rules differ. For example, a base enemy encounter interface or abstract class could let `EnemySpawner` create different enemy behavior components.
